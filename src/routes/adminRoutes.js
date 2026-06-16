@@ -8,6 +8,8 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize('admin'));
 
+router.get('/users', adminController.getUsers);
+router.post('/users', adminController.createUser);
 router.get('/analytics', adminController.getAnalytics);
 router.get('/fraud-logs', adminController.getFraudLogs);
 

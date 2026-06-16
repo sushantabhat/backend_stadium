@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Ticket = require('../models/Ticket');
 const Seat = require('../models/Seat');
@@ -7,6 +8,29 @@ const FraudLog = require('../models/FraudLog');
 const AttendanceLog = require('../models/AttendanceLog');
 const AIPrediction = require('../models/AIPrediction');
 const { modelRegistry } = require('./ai');
+
+/**
+ * Fetch all users with optional role filter.
+ */
+async function getUsers(role) {
+  const filter = role ? { role } : {};
+  return User.find(filter).select('-password').sort({ createdAt: -1 });
+}
+
+/**
+ * Create a new user with a specific role (admin only).
+ */
+async function createUser({ name, email, password, role }) {
+  const existing = await User.findOne({ email: email.toLowerCase() });
+  if (existing) {
+    const err = new Error('A user with this email already exists');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const user = await User.create({ name, email, password, role });
+  return user.toPublicJSON();
+}
 
 /**
  * Compile analytical indicators for the Admin Dashboard.
@@ -147,6 +171,8 @@ async function getFraudLogs() {
 }
 
 module.exports = {
+  getUsers,
+  createUser,
   getAdminAnalytics,
   getFraudLogs,
 };
