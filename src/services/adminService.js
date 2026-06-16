@@ -33,6 +33,48 @@ async function createUser({ name, email, password, role }) {
 }
 
 /**
+ * Update user details (name, email, role, status).
+ */
+async function updateUser(userId, updates) {
+  const user = await User.findById(userId);
+  if (!user) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (updates.email && updates.email.toLowerCase() !== user.email) {
+    const existing = await User.findOne({ email: updates.email.toLowerCase() });
+    if (existing) {
+      const err = new Error('Email already in use');
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+
+  if (updates.name) user.name = updates.name;
+  if (updates.email) user.email = updates.email;
+  if (updates.role) user.role = updates.role;
+  if (updates.status) user.status = updates.status;
+
+  await user.save();
+  return user.toPublicJSON();
+}
+
+/**
+ * Delete a user permanently.
+ */
+async function deleteUser(userId) {
+  const user = await User.findByIdAndDelete(userId);
+  if (!user) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  return { id: user._id };
+}
+
+/**
  * Compile analytical indicators for the Admin Dashboard.
  */
 async function getAdminAnalytics() {
@@ -173,6 +215,8 @@ async function getFraudLogs() {
 module.exports = {
   getUsers,
   createUser,
+  updateUser,
+  deleteUser,
   getAdminAnalytics,
   getFraudLogs,
 };

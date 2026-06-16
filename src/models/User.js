@@ -28,6 +28,11 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'staff', 'admin'],
       default: 'user',
     },
+    status: {
+      type: String,
+      enum: ['active', 'suspended'],
+      default: 'active',
+    },
   },
   { timestamps: true }
 );
@@ -50,6 +55,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     name: this.name,
     email: this.email,
     role: this.role,
+    status: this.status,
     createdAt: this.createdAt,
   };
 };

@@ -87,6 +87,7 @@ async function getSeatStats(matchId) {
 
 function formatMatch(match, seatStats) {
   return {
+    _id: match._id,
     id: match._id,
     title: match.title,
     teamA: match.teamA,
@@ -143,6 +144,9 @@ async function listMatches({ includeAll = false } = {}) {
 }
 
 async function getMatchById(matchId) {
+  if (!matchId || !mongoose.Types.ObjectId.isValid(matchId)) {
+    throw createHttpError('Invalid match ID', 400);
+  }
   const match = await Match.findById(matchId).populate('createdBy', 'name email');
 
   if (!match) {

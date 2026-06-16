@@ -26,6 +26,34 @@ async function createUser(req, res, next) {
   }
 }
 
+async function updateUser(req, res, next) {
+  try {
+    const { name, email, role, status } = req.body;
+    const updates = {};
+    if (name) updates.name = name;
+    if (email) updates.email = email;
+    if (role) updates.role = role;
+    if (status) updates.status = status;
+
+    const user = await adminService.updateUser(req.params.id, updates);
+    res.status(200).json({ message: 'User updated successfully', user });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteUser(req, res, next) {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ message: 'You cannot delete your own account' });
+    }
+    await adminService.deleteUser(req.params.id);
+    res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getAnalytics(req, res, next) {
   try {
     const analytics = await adminService.getAdminAnalytics();
@@ -47,6 +75,8 @@ async function getFraudLogs(req, res, next) {
 module.exports = {
   getUsers,
   createUser,
+  updateUser,
+  deleteUser,
   getAnalytics,
   getFraudLogs,
 };
