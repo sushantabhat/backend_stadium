@@ -3,7 +3,9 @@ const Ticket = require('../models/Ticket');
 const Seat = require('../models/Seat');
 const AttendanceLog = require('../models/AttendanceLog');
 const FraudLog = require('../models/FraudLog');
+const AIPrediction = require('../models/AIPrediction');
 const socketService = require('./socketService');
+const { featureExtractors, modelRegistry } = require('./ai');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -23,50 +25,93 @@ async function getMyTickets(userId) {
 
 /**
  * Verify stadium entry code (Staff operation) and mark attendance.
- * Implements AI-level safety / fraud rules:
- * - Flags non-existent ticket codes.
- * - Flags duplicate check-in attempts.
+ * 
+ * Enhanced AI-powered fraud detection:
+ * - Invalid ticket codes
+ * - Duplicate scan detection
+ * - Behavioral anomaly detection
+ * - Rapid scanning detection
+ * - Risk scoring and classification
+ * 
+ * Architecture: ML-ready with feature extraction and prediction engine
  */
 async function verifyTicket(staffId, ticketCode) {
+  const startTime = Date.now();
   const trimmedCode = ticketCode?.trim();
   if (!trimmedCode) {
     throw createHttpError('Ticket code is required', 400);
   }
 
-  // Find ticket
+  // Extract fraud features
+  const fraudFeatures = await featureExtractors.extractFraudFeatures(trimmedCode, staffId);
+
+  // Get fraud prediction from model registry
+  const fraudPrediction = modelRegistry.predict('fraudDetection', fraudFeatures);
+
+  // Log prediction for analytics
+  await AIPrediction.logPrediction({
+    modelKey: 'fraudDetection',
+    modelVersion: '1.0.0',
+    ticketCode: trimmedCode,
+    inputFeatures: fraudFeatures,
+    prediction: fraudPrediction,
+    confidence: 1 - fraudPrediction.riskScore,
+    predictionTime: Date.now() - startTime,
+  });
+
+  // Case 1: Invalid ticket
+  if (!fraudFeatures.isValid) {
+    await FraudLog.create({
+      ticketCode: trimmedCode,
+      scannedBy: staffId,
+      reason: 'invalid_ticket',
+      details: `Attempted check-in with non-existent barcode: ${trimmedCode}. Risk Score: ${fraudPrediction.riskScore}`,
+    });
+    throw createHttpError('Invalid QR Code: No registered ticket found', 404);
+  }
+
+  // Case 2: Duplicate scan
+  if (fraudFeatures.alreadyScanned) {
+    await FraudLog.create({
+      ticketCode: trimmedCode,
+      ticket: fraudFeatures.ticketId,
+      match: fraudFeatures.matchId,
+      scannedBy: staffId,
+      reason: 'duplicate_scan',
+      details: `Repeat scan of ticket code ${trimmedCode}. Initially scanned at ${fraudFeatures.lastScanTime?.toISOString()}. Time since last scan: ${fraudFeatures.timeSinceLastScan?.toFixed(1)}s`,
+    });
+    throw createHttpError(
+      `Access Denied: Duplicate scan. This ticket was already verified at ${fraudFeatures.lastScanTime?.toLocaleTimeString()}`,
+      409
+    );
+  }
+
+  // Case 3: Behavioral anomaly detected (medium-high risk)
+  if (fraudPrediction.classification === 'high_risk' || fraudPrediction.classification === 'medium_risk') {
+    await FraudLog.create({
+      ticketCode: trimmedCode,
+      ticket: fraudFeatures.ticketId,
+      match: fraudFeatures.matchId,
+      scannedBy: staffId,
+      reason: 'unauthorized_attempt',
+      details: `Behavioral anomaly detected. Risk Score: ${fraudPrediction.riskScore}. Flags: ${fraudPrediction.flags.join(', ')}. Scan Frequency: ${fraudFeatures.scanFrequency}/hour`,
+    });
+
+    // Still block if high risk
+    if (fraudPrediction.action === 'block') {
+      throw createHttpError(
+        `Access Denied: Suspicious activity detected. Risk Score: ${(fraudPrediction.riskScore * 100).toFixed(0)}%`,
+        403
+      );
+    }
+  }
+
+  // Case 4: Successful entry verification
   const ticket = await Ticket.findOne({ ticketCode: trimmedCode })
     .populate('user', 'name email')
     .populate('match')
     .populate('seat', 'seatLabel category price');
 
-  // Case 1: Ticket does not exist
-  if (!ticket) {
-    await FraudLog.create({
-      ticketCode: trimmedCode,
-      scannedBy: staffId,
-      reason: 'invalid_ticket',
-      details: `Attempted check-in with non-existent barcode: ${trimmedCode}`,
-    });
-    throw createHttpError('Invalid QR Code: No registered ticket found', 404);
-  }
-
-  // Case 2: Ticket already scanned
-  if (ticket.scanned) {
-    await FraudLog.create({
-      ticketCode: trimmedCode,
-      ticket: ticket._id,
-      match: ticket.match?._id,
-      scannedBy: staffId,
-      reason: 'duplicate_scan',
-      details: `Repeat scan of ticket code ${trimmedCode}. Initially scanned at ${ticket.scannedAt?.toISOString()}`,
-    });
-    throw createHttpError(
-      `Access Denied: Duplicate scan. This ticket was already verified at ${ticket.scannedAt?.toLocaleTimeString()}`,
-      409
-    );
-  }
-
-  // Case 3: Successful entry verification
   ticket.scanned = true;
   ticket.scannedAt = new Date();
   ticket.scannedBy = staffId;
@@ -97,9 +142,28 @@ async function verifyTicket(staffId, ticketCode) {
     entryRate,
   });
 
+  // Format ticket for frontend (backward compatible)
+  const formattedTicket = {
+    ticketCode: ticket.ticketCode,
+    userName: ticket.user?.name,
+    seatLabel: ticket.seat?.seatLabel,
+    category: ticket.seat?.category,
+    matchTitle: ticket.match?.title,
+    scanned: ticket.scanned,
+    scannedAt: ticket.scannedAt,
+    user: ticket.user,
+    seat: ticket.seat,
+    match: ticket.match,
+  };
+
   return {
-    ticket,
+    ticket: formattedTicket,
     log,
+    fraudPrediction: {
+      classification: fraudPrediction.classification,
+      riskScore: fraudPrediction.riskScore,
+      action: fraudPrediction.action,
+    },
   };
 }
 

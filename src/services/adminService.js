@@ -5,6 +5,8 @@ const Seat = require('../models/Seat');
 const Match = require('../models/Match');
 const FraudLog = require('../models/FraudLog');
 const AttendanceLog = require('../models/AttendanceLog');
+const AIPrediction = require('../models/AIPrediction');
+const { modelRegistry } = require('./ai');
 
 /**
  * Compile analytical indicators for the Admin Dashboard.
@@ -95,6 +97,26 @@ async function getAdminAnalytics() {
     }
   });
 
+  // 6. AI Model Statistics
+  const aiStats = modelRegistry.getStats();
+
+  // 7. AI Prediction Counts (last 7 days)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const predictionCounts = await AIPrediction.aggregate([
+    {
+      $match: {
+        timestamp: { $gte: sevenDaysAgo },
+      },
+    },
+    {
+      $group: {
+        _id: '$modelKey',
+        count: { $sum: 1 },
+        avgConfidence: { $avg: '$confidence' },
+      },
+    },
+  ]);
+
   return {
     totalRevenue,
     salesByCategory,
@@ -105,6 +127,10 @@ async function getAdminAnalytics() {
     },
     matchPerformance,
     fraudAlerts,
+    aiStats: {
+      models: aiStats.models,
+      predictions: predictionCounts,
+    },
   };
 }
 
