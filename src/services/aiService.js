@@ -2,8 +2,6 @@ const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
-const AIPrediction = require('../models/AIPrediction');
-const { featureExtractors, modelRegistry } = require('./ai');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -23,46 +21,62 @@ function createHttpError(message, statusCode) {
  * Architecture: ML-ready with feature extraction and prediction engine
  */
 async function getDynamicPricingSuggestions(matchId) {
-  const startTime = Date.now();
-
-  // Extract features
-  const matchFeatures = await featureExtractors.extractMatchFeatures(matchId);
-  if (!matchFeatures) {
+  const match = await Match.findById(matchId);
+  if (!match) {
     throw createHttpError('Match not found', 404);
   }
 
-  const historicalFeatures = await featureExtractors.extractHistoricalFeatures(matchId);
+  const totalSeats = await Seat.countDocuments({ match: matchId });
+  const bookedSeats = await Seat.countDocuments({ match: matchId, status: 'booked' });
+  const lockedSeats = await Seat.countDocuments({ match: matchId, status: 'locked' });
 
-  // Get prediction from model registry
-  const prediction = modelRegistry.predict('dynamicPricing', {
-    matchFeatures,
-    historicalFeatures,
-  });
+  const occupancyRate = totalSeats > 0 ? bookedSeats / totalSeats : 0;
+  const holdRate = totalSeats > 0 ? lockedSeats / totalSeats : 0;
+  const activityMetric = occupancyRate + holdRate * 0.5;
 
-  // Log prediction for analytics
-  await AIPrediction.logPrediction({
-    modelKey: 'dynamicPricing',
-    modelVersion: '1.0.0',
-    matchId,
-    inputFeatures: { matchFeatures, historicalFeatures },
-    prediction,
-    confidence: prediction.confidence,
-    predictionTime: Date.now() - startTime,
-  });
+  let multiplier = 1.0;
+  let demandLevel = 'Low';
+
+  if (activityMetric >= 0.8) {
+    multiplier = 1.40;
+    demandLevel = 'Critical';
+  } else if (activityMetric >= 0.5) {
+    multiplier = 1.25;
+    demandLevel = 'High';
+  } else if (activityMetric >= 0.2) {
+    multiplier = 1.10;
+    demandLevel = 'Moderate';
+  }
+
+  // Time factor
+  const hoursUntilMatch = (new Date(match.matchDate) - new Date()) / (1000 * 60 * 60);
+  let timeMultiplier = 1.0;
+  if (hoursUntilMatch <= 2) timeMultiplier = 1.30;
+  else if (hoursUntilMatch <= 24) timeMultiplier = 1.20;
+  else if (hoursUntilMatch <= 72) timeMultiplier = 1.10;
+  else if (hoursUntilMatch <= 168) timeMultiplier = 1.05;
+
+  const finalMultiplier = Math.round(multiplier * timeMultiplier * 100) / 100;
 
   return {
     matchId,
-    title: matchFeatures.title,
-    currentPricing: prediction.currentPricing,
-    suggestedPricing: prediction.suggestedPricing,
-    occupancyRate: (matchFeatures.occupancyRate * 100).toFixed(1),
-    holdRate: (matchFeatures.holdRate * 100).toFixed(1),
-    multiplier: prediction.multiplier,
-    demandLevel: prediction.demandLevel,
-    factors: prediction.factors,
-    confidence: prediction.confidence,
-    // Backward compatibility
-    occupancy: (matchFeatures.occupancyRate * 100).toFixed(1),
+    title: match.title,
+    currentPricing: match.pricing,
+    suggestedPricing: {
+      vip: Math.round(match.pricing.vip * finalMultiplier),
+      premium: Math.round(match.pricing.premium * finalMultiplier),
+      general: Math.round(match.pricing.general * finalMultiplier),
+    },
+    occupancyRate: (occupancyRate * 100).toFixed(1),
+    holdRate: (holdRate * 100).toFixed(1),
+    multiplier: finalMultiplier,
+    demandLevel,
+    factors: {
+      demandLevel,
+      urgency: hoursUntilMatch <= 24 ? 'Same day' : hoursUntilMatch <= 168 ? 'This week' : 'Early bird',
+      dayFactor: [0, 6].includes(new Date(match.matchDate).getDay()) ? 'Weekend premium' : 'Weekday',
+    },
+    confidence: 0.8,
   };
 }
 
@@ -79,51 +93,44 @@ async function getDynamicPricingSuggestions(matchId) {
  * Architecture: ML-ready with feature extraction and prediction engine
  */
 async function getSmartSeatRecommendations(matchId, category, count = 2) {
-  const startTime = Date.now();
-
-  // Extract features
-  const matchFeatures = await featureExtractors.extractMatchFeatures(matchId);
-  if (!matchFeatures) {
+  const match = await Match.findById(matchId);
+  if (!match) {
     throw createHttpError('Match not found', 404);
   }
 
-  const seatFeatures = await featureExtractors.extractSeatFeatures(matchId, category);
-  if (!seatFeatures || seatFeatures.seats.length === 0) {
+  const seatsPerRow = match.seatLayout.seatsPerRow;
+  const centerCol = Math.ceil(seatsPerRow / 2);
+
+  // Retrieve available seats in category
+  const availableSeats = await Seat.find({
+    match: matchId,
+    category,
+    status: 'available',
+  });
+
+  if (availableSeats.length === 0) {
     return [];
   }
 
-  // Note: userFeatures would be passed in a real implementation
-  // For now, we use match-based features only
-  const userFeatures = null;
-
-  // Get prediction from model registry
-  const recommendations = modelRegistry.predict('smartSeat', {
-    seatFeatures,
-    userFeatures,
-    matchFeatures,
+  // Sort: closest row first, then closest to center column
+  const sortedRecommendations = availableSeats.sort((a, b) => {
+    if (a.row !== b.row) {
+      return a.row.localeCompare(b.row);
+    }
+    const distA = Math.abs(a.number - centerCol);
+    const distB = Math.abs(b.number - centerCol);
+    return distA - distB;
   });
 
-  // Log prediction
-  await AIPrediction.logPrediction({
-    modelKey: 'smartSeat',
-    modelVersion: '1.0.0',
-    matchId,
-    inputFeatures: { seatFeatures, category, count },
-    prediction: { recommendations: recommendations.length },
-    confidence: 0.8,
-    predictionTime: Date.now() - startTime,
-  });
-
-  // Return formatted results (backward compatible)
-  return recommendations.slice(0, Number(count)).map(rec => ({
-    _id: rec.seatId,
-    seatLabel: rec.seatLabel,
-    row: rec.row,
-    number: rec.number,
-    category: rec.category,
-    price: rec.price,
-    score: rec.score,
-    explanation: rec.explanation,
+  return sortedRecommendations.slice(0, Number(count)).map(seat => ({
+    _id: seat._id,
+    seatLabel: seat.seatLabel,
+    row: seat.row,
+    number: seat.number,
+    category: seat.category,
+    price: seat.price,
+    score: (1 / (Math.abs(seat.number - centerCol) + 1)) * (1 / (seat.row.charCodeAt(0) - 64)),
+    explanation: Math.abs(seat.number - centerCol) <= 2 ? 'Excellent center view' : 'Good seat selection',
   }));
 }
 
@@ -143,8 +150,21 @@ async function getSmartSeatRecommendations(matchId, category, count = 2) {
 async function getMatchRecommendations(userId) {
   const startTime = Date.now();
 
-  // Extract user features
-  const userFeatures = await featureExtractors.extractUserFeatures(userId);
+  // Fetch user's past bookings to find team preferences
+  let userBookings = [];
+  try {
+    userBookings = await Booking.find({ user: userId }).populate('match');
+  } catch (e) {
+    // User has no bookings yet - return trending matches
+  }
+
+  const preferredTeams = new Set();
+  userBookings.forEach((b) => {
+    if (b.match) {
+      preferredTeams.add(b.match.teamA);
+      preferredTeams.add(b.match.teamB);
+    }
+  });
 
   // Find all upcoming or live matches
   const upcomingMatches = await Match.find({
@@ -155,48 +175,88 @@ async function getMatchRecommendations(userId) {
     return [];
   }
 
+  // Get seat stats for all matches in one query
+  const matchIds = upcomingMatches.map(m => m._id);
+  const seatStats = await Seat.aggregate([
+    { $match: { match: { $in: matchIds } } },
+    {
+      $group: {
+        _id: '$match',
+        total: { $sum: 1 },
+        booked: { $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] } },
+      },
+    },
+  ]);
+
+  const statsMap = {};
+  seatStats.forEach(s => {
+    statsMap[s._id.toString()] = { total: s.total, booked: s.booked };
+  });
+
   const recommendations = [];
 
-  // Score each match
   for (const match of upcomingMatches) {
-    const matchFeatures = await featureExtractors.extractMatchFeatures(match._id);
-    if (!matchFeatures) continue;
+    let score = 0;
+    let reason = 'Trending Match';
+    const allReasons = [];
 
-    // Get prediction from model registry
-    const prediction = modelRegistry.predict('matchRecommendation', {
-      userFeatures,
-      matchFeatures,
-    });
+    const matchIdStr = match._id.toString();
+    const stats = statsMap[matchIdStr] || { total: 0, booked: 0 };
+    const occupancyRate = stats.total > 0 ? stats.booked / stats.total : 0;
+
+    // 1. Team preference match (+100)
+    const matchesTeamA = preferredTeams.has(match.teamA);
+    const matchesTeamB = preferredTeams.has(match.teamB);
+    if (matchesTeamA || matchesTeamB) {
+      score += 100;
+      const favoriteTeam = matchesTeamA ? match.teamA : match.teamB;
+      reason = `Based on your interest in ${favoriteTeam}`;
+      allReasons.push(reason);
+    }
+
+    // 2. Occupancy interest score
+    if (occupancyRate > 0.6) {
+      score += 25;
+      allReasons.push(`${(occupancyRate * 100).toFixed(0)}% seats booked - high demand`);
+    } else if (occupancyRate > 0.3) {
+      score += 15;
+      allReasons.push('Moderate demand - good availability');
+    }
+
+    // 3. Recency bonus
+    const daysUntilMatch = (new Date(match.matchDate) - new Date()) / (1000 * 60 * 60 * 24);
+    if (daysUntilMatch <= 3 && daysUntilMatch >= 0) {
+      score += 15;
+      allReasons.push('Match starting soon');
+    }
+
+    // 4. User booking frequency bonus
+    if (userBookings.length > 2) {
+      score += 20;
+      allReasons.push('Active fan');
+    }
+
+    if (allReasons.length === 0) {
+      allReasons.push('Popular upcoming match');
+    }
 
     recommendations.push({
       ...match,
-      score: prediction.score,
-      reason: prediction.reason,
-      allReasons: prediction.allReasons,
-      factors: prediction.factors,
+      score,
+      reason,
+      allReasons,
       stats: {
-        total: matchFeatures.totalSeats,
-        available: matchFeatures.availableSeats,
-        booked: matchFeatures.bookedSeats,
+        total: stats.total,
+        available: stats.total - stats.booked,
+        booked: stats.booked,
       },
     });
   }
 
-  // Sort by score and return top 5
+  // Sort by score descending and return top 5
   const topRecommendations = recommendations
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
-
-  // Log predictions
-  await AIPrediction.logPrediction({
-    modelKey: 'matchRecommendation',
-    modelVersion: '1.0.0',
-    userId,
-    inputFeatures: { userFeatures, matchCount: upcomingMatches.length },
-    prediction: { topScores: topRecommendations.map(r => r.score) },
-    confidence: 0.85,
-    predictionTime: Date.now() - startTime,
-  });
 
   return topRecommendations;
 }

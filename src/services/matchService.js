@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Seat = require('../models/Seat');
+const Booking = require('../models/Booking');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -166,15 +167,24 @@ async function getMatchSeats(matchId, { category } = {}) {
 
   const seats = await Seat.find(filter).sort({ row: 1, number: 1 }).lean();
 
-  return seats.map((seat) => ({
-    id: seat._id,
-    seatLabel: seat.seatLabel,
-    row: seat.row,
-    number: seat.number,
-    category: seat.category,
-    price: seat.price,
-    status: seat.status,
-  }));
+  const now = new Date();
+  return seats.map((seat) => {
+    // Treat expired locks as available
+    let status = seat.status;
+    if (status === 'locked' && seat.lockedUntil && seat.lockedUntil < now) {
+      status = 'available';
+    }
+
+    return {
+      id: seat._id,
+      seatLabel: seat.seatLabel,
+      row: seat.row,
+      number: seat.number,
+      category: seat.category,
+      price: seat.price,
+      status,
+    };
+  });
 }
 
 async function updateMatch(matchId, updates) {
@@ -207,8 +217,24 @@ async function cancelMatch(matchId) {
   match.status = 'cancelled';
   await match.save();
 
+  // Cascade: cancel all confirmed/pending bookings for this match
+  const bookingsResult = await Booking.updateMany(
+    { match: matchId, status: { $in: ['confirmed', 'pending'] } },
+    { status: 'cancelled' }
+  );
+
+  // Cascade: release all locked/booked seats back to available
+  const seatsResult = await Seat.updateMany(
+    { match: matchId, status: { $in: ['locked', 'booked'] } },
+    { status: 'available', lockedBy: null, lockedUntil: null }
+  );
+
   const seatStats = await getSeatStats(match._id);
-  return formatMatch(match, seatStats);
+  return {
+    ...formatMatch(match, seatStats),
+    cancelledBookings: bookingsResult.modifiedCount,
+    releasedSeats: seatsResult.modifiedCount,
+  };
 }
 
 module.exports = {

@@ -12,6 +12,13 @@ function createHttpError(message, statusCode) {
 }
 
 /**
+ * Check if a seat's lock has expired.
+ */
+function isLockExpired(seat) {
+  return seat.status === 'locked' && seat.lockedUntil && seat.lockedUntil < new Date();
+}
+
+/**
  * Lock selected seats for a user (Expires in 5 minutes).
  */
 async function lockSeats(userId, matchId, seatIds) {
@@ -42,8 +49,16 @@ async function lockSeats(userId, matchId, seatIds) {
     throw createHttpError('One or more selected seats do not exist for this match', 400);
   }
 
-  // Validate each seat
+  // Validate each seat - expired locks are treated as available
   for (const seat of seats) {
+    // Auto-release expired locks
+    if (isLockExpired(seat)) {
+      seat.status = 'available';
+      seat.lockedBy = null;
+      seat.lockedUntil = null;
+      await seat.save();
+    }
+
     const isLockedByOther =
       seat.status === 'locked' &&
       seat.lockedUntil &&
@@ -121,7 +136,7 @@ async function unlockSeats(userId, matchId, seatIds) {
 /**
  * Confirm booking, process payment, generate tickets, mark seats as booked.
  */
-async function confirmBooking(userId, matchId, seatIds, totalAmount) {
+async function confirmBooking(userId, matchId, seatIds) {
   if (!seatIds || !Array.isArray(seatIds) || seatIds.length === 0) {
     throw createHttpError('Seats are required', 400);
   }
@@ -143,8 +158,16 @@ async function confirmBooking(userId, matchId, seatIds, totalAmount) {
     throw createHttpError('One or more selected seats do not exist for this match', 400);
   }
 
-  // Validate seats before booking
+  // Validate seats before booking - expired locks are treated as available
   for (const seat of seats) {
+    // Auto-release expired locks
+    if (isLockExpired(seat)) {
+      seat.status = 'available';
+      seat.lockedBy = null;
+      seat.lockedUntil = null;
+      await seat.save();
+    }
+
     const isLockedByOther =
       seat.status === 'locked' &&
       seat.lockedUntil &&
@@ -155,6 +178,9 @@ async function confirmBooking(userId, matchId, seatIds, totalAmount) {
       throw createHttpError(`Seat ${seat.seatLabel} is not available for booking`, 409);
     }
   }
+
+  // Calculate total amount server-side from actual seat prices (never trust client)
+  const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
 
   // Create booking record
   const booking = await Booking.create({

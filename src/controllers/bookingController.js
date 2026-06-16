@@ -35,10 +35,10 @@ async function unlockSeats(req, res, next) {
 
 async function confirmBooking(req, res, next) {
   try {
-    const { matchId, seatIds, totalAmount } = req.body;
+    const { matchId, seatIds } = req.body;
     const userId = req.user.id;
 
-    const result = await bookingService.confirmBooking(userId, matchId, seatIds, totalAmount);
+    const result = await bookingService.confirmBooking(userId, matchId, seatIds);
 
     res.status(201).json({
       message: 'Booking confirmed successfully',
