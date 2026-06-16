@@ -37,6 +37,15 @@ const seatSchema = new mongoose.Schema(
       enum: ['available', 'locked', 'booked'],
       default: 'available',
     },
+    lockedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    lockedUntil: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
