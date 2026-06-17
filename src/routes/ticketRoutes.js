@@ -10,8 +10,8 @@ router.use(protect);
 // Fan route
 router.get('/my-tickets', ticketController.getMyTickets);
 
-// Staff/Admin routes
-router.post('/verify', authorize('staff', 'admin'), ticketController.verifyTicket);
-router.get('/scan-history', authorize('staff', 'admin'), ticketController.getStaffScanHistory);
+// Staff/Admin/Supervisor routes
+router.post('/verify', authorize('staff', 'supervisor', 'admin'), ticketController.verifyTicket);
+router.get('/scan-history', authorize('staff', 'supervisor', 'admin'), ticketController.getStaffScanHistory);
 
 module.exports = router;

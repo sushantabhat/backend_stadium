@@ -16,8 +16,8 @@ async function createUser(req, res, next) {
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email, and password are required' });
     }
-    if (!['user', 'staff', 'admin'].includes(role)) {
-      return res.status(400).json({ message: 'Role must be user, staff, or admin' });
+    if (!['user', 'staff', 'supervisor', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be user, staff, supervisor, or admin' });
     }
     const user = await adminService.createUser({ name, email, password, role });
     res.status(201).json({ message: 'User created successfully', user });

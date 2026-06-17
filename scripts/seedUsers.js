@@ -21,6 +21,12 @@ const SEED_USERS = [
     password: 'staff123',
     role: 'staff',
   },
+  {
+    name: 'Shift Supervisor',
+    email: 'supervisor@stadium.com',
+    password: 'super123',
+    role: 'supervisor',
+  },
 ];
 
 async function seedUsers() {
@@ -51,6 +57,7 @@ async function seedUsers() {
   console.log('\nSeed complete. Test credentials:');
   console.log('Admin -> admin@stadium.com / admin123');
   console.log('Staff -> staff@stadium.com / staff123');
+  console.log('Supervisor -> supervisor@stadium.com / super123');
 
   await mongoose.disconnect();
 }
