@@ -59,6 +59,9 @@ function validateCreatePayload(body) {
     venue: body.venue.trim(),
     matchDate: parseMatchDate(body.matchDate),
     description: body.description?.trim() || '',
+    imageUrl: body.imageUrl?.trim() || '',
+    teamALogo: body.teamALogo?.trim() || '',
+    teamBLogo: body.teamBLogo?.trim() || '',
     pricing: {
       vip: Number(pricing.vip),
       premium: Number(pricing.premium),

@@ -57,6 +57,21 @@ const matchSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    teamALogo: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    teamBLogo: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
   { timestamps: true }
 );

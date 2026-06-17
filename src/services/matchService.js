@@ -95,6 +95,9 @@ function formatMatch(match, seatStats) {
     venue: match.venue,
     matchDate: match.matchDate,
     description: match.description,
+    imageUrl: match.imageUrl || '',
+    teamALogo: match.teamALogo || '',
+    teamBLogo: match.teamBLogo || '',
     status: match.status,
     pricing: match.pricing,
     seatLayout: match.seatLayout,
@@ -198,7 +201,7 @@ async function updateMatch(matchId, updates) {
     throw createHttpError('Match not found', 404);
   }
 
-  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status'];
+  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status', 'imageUrl', 'teamALogo', 'teamBLogo'];
   allowedFields.forEach((field) => {
     if (updates[field] !== undefined) {
       match[field] = updates[field];
