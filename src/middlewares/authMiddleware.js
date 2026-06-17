@@ -22,6 +22,10 @@ async function protect(req, res, next) {
       return res.status(401).json({ message: 'Not authorized, user not found' });
     }
 
+    if (user.status === 'suspended') {
+      return res.status(403).json({ message: 'Account has been suspended. Contact support.' });
+    }
+
     req.user = {
       id: user._id.toString(),
       role: user.role,

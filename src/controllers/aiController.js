@@ -12,10 +12,11 @@ async function getDynamicPricingSuggestions(req, res, next) {
 async function getSmartSeatRecommendations(req, res, next) {
   try {
     const { category, count } = req.query;
+    const parsedCount = Math.max(1, Math.min(Number(count) || 2, 10));
     const recommendations = await aiService.getSmartSeatRecommendations(
       req.params.id,
       category || 'general',
-      count || 2
+      parsedCount
     );
     res.status(200).json({ recommendations });
   } catch (error) {

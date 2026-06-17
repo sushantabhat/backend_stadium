@@ -46,7 +46,7 @@ function predictMatchRecommendation(userFeatures, matchFeatures) {
 
   // 2. Category preference match
   if (userFeatures.categoryPreferences && matchFeatures.categoryStats) {
-    const userTopCategory = Object.entries(userFeatures.categoryStats || {})
+    const userTopCategory = Object.entries(userFeatures.categoryPreferences || {})
       .sort(([, a], [, b]) => b.occupancyRate - a.occupancyRate)[0];
 
     if (userTopCategory) {

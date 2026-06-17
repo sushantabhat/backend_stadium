@@ -112,10 +112,18 @@ async function verifyTicket(staffId, ticketCode) {
     .populate('match')
     .populate('seat', 'seatLabel category price');
 
+  if (!ticket) {
+    throw createHttpError('Ticket not found', 404);
+  }
+
   ticket.scanned = true;
   ticket.scannedAt = new Date();
   ticket.scannedBy = staffId;
   await ticket.save();
+
+  if (!ticket.match || !ticket.user || !ticket.seat) {
+    throw createHttpError('Ticket data is incomplete - referenced records may have been deleted', 500);
+  }
 
   // Create attendance trail
   const log = await AttendanceLog.create({
