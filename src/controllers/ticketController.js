@@ -17,16 +17,8 @@ async function verifyTicket(req, res, next) {
     const result = await ticketService.verifyTicket(staffId, ticketCode);
 
     res.status(200).json({
-      message: 'Ticket verified successfully. Welcome to the stadium!',
-      ticket: {
-        id: result.ticket._id,
-        ticketCode: result.ticket.ticketCode,
-        userName: result.ticket.user.name,
-        matchTitle: result.ticket.match.title,
-        seatLabel: result.ticket.seat.seatLabel,
-        category: result.ticket.seat.category,
-        scannedAt: result.ticket.scannedAt,
-      },
+      message: 'Ticket verified. Welcome to the stadium!',
+      ticket: result.ticket,
     });
   } catch (error) {
     next(error);

@@ -242,7 +242,7 @@ async function confirmBooking(userId, matchId, seatIds) {
   const bookedSeatsCount = stats[0]?.booked || 0;
 
   // Fetch current attendance count (actual scanned entries)
-  const attendedCount = await Ticket.countDocuments({ match: matchId, scanned: true });
+  const attendedCount = await Ticket.countDocuments({ match: matchId, status: 'used' });
   const entryRate = bookedSeatsCount > 0 ? ((attendedCount / bookedSeatsCount) * 100).toFixed(1) : '0.0';
 
   socketService.emitAttendanceUpdate(matchId, {

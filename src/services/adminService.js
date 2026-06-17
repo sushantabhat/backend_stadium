@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Ticket = require('../models/Ticket');
@@ -6,8 +5,6 @@ const Seat = require('../models/Seat');
 const Match = require('../models/Match');
 const FraudLog = require('../models/FraudLog');
 const AttendanceLog = require('../models/AttendanceLog');
-const AIPrediction = require('../models/AIPrediction');
-const { modelRegistry } = require('./ai');
 
 /**
  * Fetch all users with optional role filter.
@@ -122,7 +119,7 @@ async function getAdminAnalytics() {
 
   // 3. Attendance Ratios
   const totalTickets = await Ticket.countDocuments();
-  const scannedTickets = await Ticket.countDocuments({ scanned: true });
+  const scannedTickets = await Ticket.countDocuments({ status: 'used' });
   const entryRate = totalTickets > 0 ? ((scannedTickets / totalTickets) * 100).toFixed(1) : '0.0';
 
   // 4. Match-wise Performance Occupancy
@@ -146,42 +143,22 @@ async function getAdminAnalytics() {
     });
   }
 
-  // 5. Fraud Alert Counter
+  // 5. Security Alert Counter (invalid/duplicate scans)
   const fraudCounts = await FraudLog.aggregate([
     { $group: { _id: '$reason', count: { $sum: 1 } } },
   ]);
 
-  const fraudAlerts = {
+  const securityAlerts = {
     duplicate_scan: 0,
     invalid_ticket: 0,
     unauthorized_attempt: 0,
   };
 
   fraudCounts.forEach((item) => {
-    if (fraudAlerts[item._id] !== undefined) {
-      fraudAlerts[item._id] = item.count;
+    if (securityAlerts[item._id] !== undefined) {
+      securityAlerts[item._id] = item.count;
     }
   });
-
-  // 6. AI Model Statistics
-  const aiStats = modelRegistry.getStats();
-
-  // 7. AI Prediction Counts (last 7 days)
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const predictionCounts = await AIPrediction.aggregate([
-    {
-      $match: {
-        timestamp: { $gte: sevenDaysAgo },
-      },
-    },
-    {
-      $group: {
-        _id: '$modelKey',
-        count: { $sum: 1 },
-        avgConfidence: { $avg: '$confidence' },
-      },
-    },
-  ]);
 
   return {
     totalRevenue,
@@ -192,16 +169,12 @@ async function getAdminAnalytics() {
       entryRate,
     },
     matchPerformance,
-    fraudAlerts,
-    aiStats: {
-      models: aiStats.models,
-      predictions: predictionCounts,
-    },
+    securityAlerts,
   };
 }
 
 /**
- * Fetch logs representing fraudulent or rejected ticket checkins.
+ * Fetch logs representing rejected ticket check-in attempts.
  */
 async function getFraudLogs() {
   return FraudLog.find()

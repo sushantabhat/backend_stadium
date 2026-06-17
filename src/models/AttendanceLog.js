@@ -15,7 +15,7 @@ const attendanceLogSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'User ID is required'],
+      required: false,
     },
     seat: {
       type: mongoose.Schema.Types.ObjectId,
@@ -36,6 +36,7 @@ const attendanceLogSchema = new mongoose.Schema(
 );
 
 attendanceLogSchema.index({ match: 1 });
+attendanceLogSchema.index({ scannedBy: 1 });
 attendanceLogSchema.index({ entryTime: 1 });
 
 module.exports = mongoose.model('AttendanceLog', attendanceLogSchema);

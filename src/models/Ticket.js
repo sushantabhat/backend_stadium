@@ -27,11 +27,12 @@ const ticketSchema = new mongoose.Schema(
       required: [true, 'Ticket verification code is required'],
       unique: true,
     },
-    scanned: {
-      type: Boolean,
-      default: false,
+    status: {
+      type: String,
+      enum: ['active', 'used'],
+      default: 'active',
     },
-    scannedAt: {
+    usedAt: {
       type: Date,
     },
     scannedBy: {
@@ -44,5 +45,6 @@ const ticketSchema = new mongoose.Schema(
 
 ticketSchema.index({ match: 1 });
 ticketSchema.index({ user: 1 });
+ticketSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Ticket', ticketSchema);
