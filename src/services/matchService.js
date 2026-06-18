@@ -4,6 +4,24 @@ const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
 const { SEAT_CATEGORIES } = require('../models/Seat');
 
+const GATE_RULES = [
+  { keywords: ['vip'], gate: 'VIP Entrance' },
+  { keywords: ['supporters'], gate: 'Supporters Entrance' },
+  { keywords: ['north'], gate: 'North Gate' },
+  { keywords: ['south'], gate: 'South Gate' },
+  { keywords: ['east'], gate: 'East Gate' },
+  { keywords: ['west'], gate: 'West Gate' },
+];
+
+function inferGate(section) {
+  if (section.gate) return section.gate;
+  const label = ((section.label || '') + ' ' + (section.sectionId || '')).toLowerCase();
+  for (const rule of GATE_RULES) {
+    if (rule.keywords.some((k) => label.includes(k))) return rule.gate;
+  }
+  return '';
+}
+
 function createHttpError(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -23,6 +41,8 @@ function buildSeatDocuments(match) {
       const base = Math.floor(section.totalSeats / rows.length);
       const extra = section.totalSeats % rows.length;
 
+      const gate = inferGate(section);
+
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
         const rowLabel = rows[rowIndex];
         const price = section.pricePerTicket || 0;
@@ -32,6 +52,7 @@ function buildSeatDocuments(match) {
           seats.push({
             match: match._id,
             sectionId: section.sectionId,
+            gate,
             seatLabel: `${section.sectionId}-${rowLabel}-${seatNumber}`,
             row: rowLabel,
             number: seatNumber,
@@ -237,6 +258,13 @@ async function getMatchSeats(matchId, { category, sectionId } = {}) {
 
   const seats = await Seat.find(filter).sort({ row: 1, number: 1 }).lean();
 
+  const sectionGateMap = {};
+  if (match.stadiumSections) {
+    for (const sec of match.stadiumSections) {
+      sectionGateMap[sec.sectionId] = inferGate(sec);
+    }
+  }
+
   const now = new Date();
   return seats.map((seat) => {
     let status = seat.status;
@@ -248,9 +276,11 @@ async function getMatchSeats(matchId, { category, sectionId } = {}) {
       ? Object.fromEntries(match.pricing)
       : match.pricing || {};
 
+    const gate = seat.gate || sectionGateMap[seat.sectionId] || '';
     return {
       id: seat._id,
       sectionId: seat.sectionId,
+      gate,
       seatLabel: seat.seatLabel,
       row: seat.row,
       number: seat.number,
@@ -392,6 +422,7 @@ async function cancelMatch(matchId) {
 }
 
 module.exports = {
+  buildSeatDocuments,
   createMatch,
   listMatches,
   getMatchById,

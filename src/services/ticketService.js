@@ -15,7 +15,7 @@ function createHttpError(message, statusCode) {
 async function getMyTickets(userId) {
   return Ticket.find({ user: userId })
     .populate('match')
-    .populate('seat', 'seatLabel category price')
+    .populate('seat', 'seatLabel category price gate')
     .sort({ createdAt: -1 });
 }
 
@@ -97,7 +97,7 @@ async function verifyTicket(staffId, ticketCode) {
   )
     .populate('user', 'name email')
     .populate('match')
-    .populate('seat', 'seatLabel category price');
+    .populate('seat', 'seatLabel category price gate');
 
   // Handle race condition: another request marked it as "used" between
   // our read and write. This should be extremely rare but we handle it.
@@ -173,7 +173,7 @@ async function getStaffScanHistory(staffId) {
   return AttendanceLog.find({ scannedBy: staffId })
     .populate('user', 'name')
     .populate('match')
-    .populate('seat', 'seatLabel category price')
+    .populate('seat', 'seatLabel category price gate')
     .sort({ entryTime: -1 })
     .limit(50);
 }

@@ -14,6 +14,11 @@ const seatSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    gate: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     seatLabel: {
       type: String,
       required: true,

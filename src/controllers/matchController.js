@@ -75,6 +75,7 @@ function validateCreatePayload(body) {
         totalSeats: Number(s.totalSeats),
         availableSeats: Number(s.availableSeats) || Number(s.totalSeats),
         rows: Array.isArray(s.rows) ? s.rows : [],
+        gate: s.gate || '',
       };
     });
   } else {
@@ -198,6 +199,7 @@ async function updateMatch(req, res, next) {
           totalSeats: Number(s.totalSeats) || 0,
           availableSeats: Number(s.availableSeats) || Number(s.totalSeats) || 0,
           rows: (s.rows || []).map((r) => String(r).trim()).filter(Boolean),
+          gate: s.gate || '',
         });
       }
       updates.stadiumSections = validated;

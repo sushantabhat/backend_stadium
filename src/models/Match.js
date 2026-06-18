@@ -17,6 +17,7 @@ const stadiumSectionSchema = new mongoose.Schema(
     totalSeats: { type: Number, required: true, min: 1 },
     availableSeats: { type: Number, default: 0 },
     rows: [{ type: String }],
+    gate: { type: String, default: '' },
   },
   { _id: false }
 );
