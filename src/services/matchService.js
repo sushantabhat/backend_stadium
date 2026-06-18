@@ -208,10 +208,62 @@ async function updateMatch(matchId, updates) {
     }
   });
 
+  if (updates.pricing) {
+    const pricing = updates.pricing;
+    ['vip', 'premium', 'general'].forEach((tier) => {
+      if (pricing[tier] !== undefined) {
+        const value = Number(pricing[tier]);
+        if (Number.isNaN(value) || value < 0) {
+          throw createHttpError(`pricing.${tier} must be a valid non-negative number`, 400);
+        }
+        match.pricing[tier] = value;
+      }
+    });
+  }
+
+  let seatsRegenerated = false;
+  if (updates.seatLayout) {
+    const bookedOrLocked = await Seat.countDocuments({
+      match: matchId,
+      status: { $in: ['booked', 'locked'] },
+    });
+
+    if (bookedOrLocked > 0) {
+      throw createHttpError(
+        `Cannot modify seat layout: ${bookedOrLocked} seat(s) are booked or locked. Cancel or complete those bookings first.`,
+        400
+      );
+    }
+
+    const layout = updates.seatLayout;
+    const rows = Number(layout.rows);
+    const seatsPerRow = Number(layout.seatsPerRow);
+    const vipRows = Number(layout.vipRows ?? 0);
+    const premiumRows = Number(layout.premiumRows ?? 0);
+
+    if (!rows || rows < 1 || rows > 30) {
+      throw createHttpError('seatLayout.rows must be between 1 and 30', 400);
+    }
+    if (!seatsPerRow || seatsPerRow < 1 || seatsPerRow > 50) {
+      throw createHttpError('seatLayout.seatsPerRow must be between 1 and 50', 400);
+    }
+    if (vipRows + premiumRows > rows) {
+      throw createHttpError('VIP rows + Premium rows cannot exceed total rows', 400);
+    }
+
+    match.seatLayout = { rows, seatsPerRow, vipRows, premiumRows };
+    match.totalSeats = rows * seatsPerRow;
+
+    await Seat.deleteMany({ match: matchId });
+    const seatDocuments = buildSeatDocuments(match);
+    await Seat.insertMany(seatDocuments);
+    seatsRegenerated = true;
+  }
+
   await match.save();
 
   const seatStats = await getSeatStats(match._id);
-  return formatMatch(match, seatStats);
+  return { ...formatMatch(match, seatStats), seatsRegenerated };
 }
 
 async function cancelMatch(matchId) {

@@ -130,6 +130,15 @@ async function updateMatch(req, res, next) {
       updates.matchDate = parseMatchDate(updates.matchDate);
     }
 
+    if (updates.title) updates.title = String(updates.title).trim();
+    if (updates.teamA) updates.teamA = String(updates.teamA).trim();
+    if (updates.teamB) updates.teamB = String(updates.teamB).trim();
+    if (updates.venue) updates.venue = String(updates.venue).trim();
+    if (updates.description !== undefined) updates.description = String(updates.description).trim();
+    if (updates.imageUrl !== undefined) updates.imageUrl = String(updates.imageUrl).trim();
+    if (updates.teamALogo !== undefined) updates.teamALogo = String(updates.teamALogo).trim();
+    if (updates.teamBLogo !== undefined) updates.teamBLogo = String(updates.teamBLogo).trim();
+
     const match = await matchService.updateMatch(req.params.id, updates);
 
     res.status(200).json({
