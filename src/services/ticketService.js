@@ -63,6 +63,19 @@ async function verifyTicket(staffId, ticketCode) {
 
   if (existingTicket.status === 'used') {
     console.log(`[TicketVerify] ALREADY USED code="${trimmedCode}" usedAt=${existingTicket.usedAt}`);
+    try {
+      const FraudLog = require('../models/FraudLog');
+      await FraudLog.create({
+        ticketCode: trimmedCode,
+        ticket: existingTicket._id,
+        match: existingTicket.match,
+        scannedBy: staffId,
+        reason: 'duplicate_scan',
+        details: `Duplicate scan attempt at ${new Date().toLocaleTimeString()}. Original entry at ${existingTicket.usedAt?.toLocaleTimeString() || 'unknown'}.`,
+      });
+    } catch (fraudErr) {
+      console.error('[TicketVerify] Fraud log write failed (non-fatal):', fraudErr.message);
+    }
     throw createHttpError(
       `Ticket already used at ${existingTicket.usedAt?.toLocaleTimeString() || 'unknown time'}. Duplicate entry denied.`,
       409

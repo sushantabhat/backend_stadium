@@ -58,15 +58,19 @@ async function getDynamicPricingSuggestions(matchId) {
 
   const finalMultiplier = Math.round(multiplier * timeMultiplier * 100) / 100;
 
+  const suggestedPricing = {};
+  const pricingObj = match.pricing instanceof Map
+    ? Object.fromEntries(match.pricing)
+    : match.pricing || {};
+  for (const [category, basePrice] of Object.entries(pricingObj)) {
+    suggestedPricing[category] = Math.round(basePrice * finalMultiplier);
+  }
+
   return {
     matchId,
     title: match.title,
-    currentPricing: match.pricing,
-    suggestedPricing: {
-      vip: Math.round(match.pricing.vip * finalMultiplier),
-      premium: Math.round(match.pricing.premium * finalMultiplier),
-      general: Math.round(match.pricing.general * finalMultiplier),
-    },
+    currentPricing: pricingObj,
+    suggestedPricing,
     occupancyRate: (occupancyRate * 100).toFixed(1),
     holdRate: (holdRate * 100).toFixed(1),
     multiplier: finalMultiplier,
@@ -98,7 +102,8 @@ async function getSmartSeatRecommendations(matchId, category, count = 2) {
     throw createHttpError('Match not found', 404);
   }
 
-  const seatsPerRow = match.seatLayout.seatsPerRow;
+  const seatLayout = match.seatLayout || {};
+  const seatsPerRow = seatLayout.seatsPerRow || 20;
   const centerCol = Math.ceil(seatsPerRow / 2);
 
   // Retrieve available seats in category

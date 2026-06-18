@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
+const { SEAT_CATEGORIES } = require('../models/Seat');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -10,31 +11,64 @@ function createHttpError(message, statusCode) {
 }
 
 function buildSeatDocuments(match) {
-  const { rows, seatsPerRow, vipRows, premiumRows } = match.seatLayout;
   const seats = [];
 
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
-    const rowLabel = String.fromCharCode(65 + rowIndex);
-    let category = 'general';
+  if (match.stadiumSections && match.stadiumSections.length > 0) {
+    for (const section of match.stadiumSections) {
+      let rows = section.rows || [];
+      if (!rows.length) {
+        const numRows = Math.ceil(section.totalSeats / 8);
+        rows = Array.from({ length: Math.max(numRows, 1) }, (_, i) => String.fromCharCode(65 + i));
+      }
+      const base = Math.floor(section.totalSeats / rows.length);
+      const extra = section.totalSeats % rows.length;
 
-    if (rowIndex < vipRows) {
-      category = 'vip';
-    } else if (rowIndex < vipRows + premiumRows) {
-      category = 'premium';
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const rowLabel = rows[rowIndex];
+        const price = section.pricePerTicket || 0;
+        const seatsInRow = rowIndex < extra ? base + 1 : base;
+
+        for (let seatNumber = 1; seatNumber <= seatsInRow; seatNumber += 1) {
+          seats.push({
+            match: match._id,
+            sectionId: section.sectionId,
+            seatLabel: `${section.sectionId}-${rowLabel}-${seatNumber}`,
+            row: rowLabel,
+            number: seatNumber,
+            category: section.category,
+            price,
+            status: 'available',
+          });
+        }
+      }
     }
+  } else if (match.seatLayout) {
+    const { rows, seatsPerRow, vipRows, premiumRows } = match.seatLayout;
 
-    const price = match.pricing[category];
+    for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+      const rowLabel = String.fromCharCode(65 + rowIndex);
+      let category = 'category2';
 
-    for (let seatNumber = 1; seatNumber <= seatsPerRow; seatNumber += 1) {
-      seats.push({
-        match: match._id,
-        seatLabel: `${rowLabel}-${seatNumber}`,
-        row: rowLabel,
-        number: seatNumber,
-        category,
-        price,
-        status: 'available',
-      });
+      if (rowIndex < vipRows) {
+        category = 'vip';
+      } else if (rowIndex < vipRows + premiumRows) {
+        category = 'category1';
+      }
+
+      const price = match.pricing?.[category] || 0;
+
+      for (let seatNumber = 1; seatNumber <= seatsPerRow; seatNumber += 1) {
+        seats.push({
+          match: match._id,
+          sectionId: null,
+          seatLabel: `${rowLabel}-${seatNumber}`,
+          row: rowLabel,
+          number: seatNumber,
+          category,
+          price,
+          status: 'available',
+        });
+      }
     }
   }
 
@@ -59,33 +93,40 @@ async function getSeatStats(matchId) {
         booked: {
           $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
         },
-        vip: {
-          $sum: { $cond: [{ $eq: ['$category', 'vip'] }, 1, 0] },
-        },
-        premium: {
-          $sum: { $cond: [{ $eq: ['$category', 'premium'] }, 1, 0] },
-        },
-        general: {
-          $sum: { $cond: [{ $eq: ['$category', 'general'] }, 1, 0] },
-        },
+      },
+    },
+  ]);
+
+  const categoryStats = await Seat.aggregate([
+    { $match: { match: objectId } },
+    {
+      $group: {
+        _id: '$category',
+        count: { $sum: 1 },
       },
     },
   ]);
 
   const result = stats[0] || {};
+  const categoryMap = {};
+  categoryStats.forEach((cs) => {
+    categoryMap[cs._id] = cs.count;
+  });
 
   return {
     total: result.total || 0,
     available: result.available || 0,
     locked: result.locked || 0,
     booked: result.booked || 0,
-    vip: result.vip || 0,
-    premium: result.premium || 0,
-    general: result.general || 0,
+    ...categoryMap,
   };
 }
 
 function formatMatch(match, seatStats) {
+  const pricingObj = match.pricing instanceof Map
+    ? Object.fromEntries(match.pricing)
+    : match.pricing || {};
+
   return {
     _id: match._id,
     id: match._id,
@@ -99,7 +140,8 @@ function formatMatch(match, seatStats) {
     teamALogo: match.teamALogo || '',
     teamBLogo: match.teamBLogo || '',
     status: match.status,
-    pricing: match.pricing,
+    pricing: pricingObj,
+    stadiumSections: match.stadiumSections || [],
     seatLayout: match.seatLayout,
     totalSeats: match.totalSeats,
     createdBy: match.createdBy,
@@ -109,21 +151,43 @@ function formatMatch(match, seatStats) {
   };
 }
 
-async function createMatch(adminId, payload) {
-  const { rows, seatsPerRow, vipRows, premiumRows } = payload.seatLayout;
+function parsePricing(pricing) {
+  if (!pricing) return {};
+  const result = {};
+  const entries = pricing instanceof Map ? pricing.entries() : Object.entries(pricing);
+  for (const [key, value] of entries) {
+    const num = Number(value);
+    if (!Number.isNaN(num) && num >= 0) {
+      result[key] = num;
+    }
+  }
+  return result;
+}
 
-  if (vipRows + premiumRows > rows) {
-    throw createHttpError('VIP rows + Premium rows cannot exceed total rows', 400);
+async function createMatch(adminId, payload) {
+  const pricing = parsePricing(payload.pricing);
+  let totalSeats = 0;
+
+  if (payload.stadiumSections && payload.stadiumSections.length > 0) {
+    for (const section of payload.stadiumSections) {
+      totalSeats += section.totalSeats || 0;
+    }
+  } else if (payload.seatLayout) {
+    const { rows, seatsPerRow } = payload.seatLayout;
+    totalSeats = rows * seatsPerRow;
   }
 
   const match = await Match.create({
     ...payload,
+    pricing,
     createdBy: adminId,
-    totalSeats: rows * seatsPerRow,
+    totalSeats,
   });
 
   const seatDocuments = buildSeatDocuments(match);
-  await Seat.insertMany(seatDocuments);
+  if (seatDocuments.length > 0) {
+    await Seat.insertMany(seatDocuments);
+  }
 
   const seatStats = await getSeatStats(match._id);
   return formatMatch(match, seatStats);
@@ -160,7 +224,7 @@ async function getMatchById(matchId) {
   return formatMatch(match, seatStats);
 }
 
-async function getMatchSeats(matchId, { category } = {}) {
+async function getMatchSeats(matchId, { category, sectionId } = {}) {
   const match = await Match.findById(matchId);
 
   if (!match) {
@@ -168,27 +232,30 @@ async function getMatchSeats(matchId, { category } = {}) {
   }
 
   const filter = { match: matchId };
-  if (category) {
-    filter.category = category;
-  }
+  if (category) filter.category = category;
+  if (sectionId) filter.sectionId = sectionId;
 
   const seats = await Seat.find(filter).sort({ row: 1, number: 1 }).lean();
 
   const now = new Date();
   return seats.map((seat) => {
-    // Treat expired locks as available
     let status = seat.status;
     if (status === 'locked' && seat.lockedUntil && seat.lockedUntil < now) {
       status = 'available';
     }
 
+    const pricingObj = match.pricing instanceof Map
+      ? Object.fromEntries(match.pricing)
+      : match.pricing || {};
+
     return {
       id: seat._id,
+      sectionId: seat.sectionId,
       seatLabel: seat.seatLabel,
       row: seat.row,
       number: seat.number,
       category: seat.category,
-      price: match.pricing[seat.category] ?? seat.price,
+      price: pricingObj[seat.category] ?? seat.price,
       status,
     };
   });
@@ -209,25 +276,20 @@ async function updateMatch(matchId, updates) {
   });
 
   if (updates.pricing) {
-    const pricing = updates.pricing;
-    ['vip', 'premium', 'general'].forEach((tier) => {
-      if (pricing[tier] !== undefined) {
-        const value = Number(pricing[tier]);
-        if (Number.isNaN(value) || value < 0) {
-          throw createHttpError(`pricing.${tier} must be a valid non-negative number`, 400);
-        }
-        match.pricing[tier] = value;
-      }
-    });
+    const parsedPricing = parsePricing(updates.pricing);
+    match.pricing = parsedPricing;
 
-    const bulkOps = ['vip', 'premium', 'general']
-      .filter((tier) => pricing[tier] !== undefined)
-      .map((tier) => ({
+    const bulkOps = [];
+    for (const [category, price] of Object.entries(parsedPricing)) {
+      const finalPrice = Number(price);
+      if (Number.isNaN(finalPrice) || finalPrice < 0) continue;
+      bulkOps.push({
         updateMany: {
-          filter: { match: matchId, category: tier, status: 'available' },
-          update: { price: Number(pricing[tier]) },
+          filter: { match: matchId, category, status: 'available' },
+          update: { price: finalPrice },
         },
-      }));
+      });
+    }
 
     if (bulkOps.length > 0) {
       await Seat.bulkWrite(bulkOps);
@@ -235,7 +297,8 @@ async function updateMatch(matchId, updates) {
   }
 
   let seatsRegenerated = false;
-  if (updates.seatLayout) {
+
+  if (updates.stadiumSections) {
     const bookedOrLocked = await Seat.countDocuments({
       match: matchId,
       status: { $in: ['booked', 'locked'] },
@@ -243,7 +306,29 @@ async function updateMatch(matchId, updates) {
 
     if (bookedOrLocked > 0) {
       throw createHttpError(
-        `Cannot modify seat layout: ${bookedOrLocked} seat(s) are booked or locked. Cancel or complete those bookings first.`,
+        `Cannot modify stadium layout: ${bookedOrLocked} seat(s) are booked or locked.`,
+        400
+      );
+    }
+
+    match.stadiumSections = updates.stadiumSections;
+    match.totalSeats = updates.stadiumSections.reduce((sum, s) => sum + (s.totalSeats || 0), 0);
+
+    await Seat.deleteMany({ match: matchId });
+    const seatDocuments = buildSeatDocuments(match);
+    if (seatDocuments.length > 0) {
+      await Seat.insertMany(seatDocuments);
+    }
+    seatsRegenerated = true;
+  } else if (updates.seatLayout) {
+    const bookedOrLocked = await Seat.countDocuments({
+      match: matchId,
+      status: { $in: ['booked', 'locked'] },
+    });
+
+    if (bookedOrLocked > 0) {
+      throw createHttpError(
+        `Cannot modify seat layout: ${bookedOrLocked} seat(s) are booked or locked.`,
         400
       );
     }
@@ -260,16 +345,15 @@ async function updateMatch(matchId, updates) {
     if (!seatsPerRow || seatsPerRow < 1 || seatsPerRow > 50) {
       throw createHttpError('seatLayout.seatsPerRow must be between 1 and 50', 400);
     }
-    if (vipRows + premiumRows > rows) {
-      throw createHttpError('VIP rows + Premium rows cannot exceed total rows', 400);
-    }
 
     match.seatLayout = { rows, seatsPerRow, vipRows, premiumRows };
     match.totalSeats = rows * seatsPerRow;
 
     await Seat.deleteMany({ match: matchId });
     const seatDocuments = buildSeatDocuments(match);
-    await Seat.insertMany(seatDocuments);
+    if (seatDocuments.length > 0) {
+      await Seat.insertMany(seatDocuments);
+    }
     seatsRegenerated = true;
   }
 
@@ -289,13 +373,11 @@ async function cancelMatch(matchId) {
   match.status = 'cancelled';
   await match.save();
 
-  // Cascade: cancel all confirmed/pending bookings for this match
   const bookingsResult = await Booking.updateMany(
     { match: matchId, status: { $in: ['confirmed', 'pending'] } },
     { status: 'cancelled' }
   );
 
-  // Cascade: release all locked/booked seats back to available
   const seatsResult = await Seat.updateMany(
     { match: matchId, status: { $in: ['locked', 'booked'] } },
     { status: 'available', lockedBy: null, lockedUntil: null }

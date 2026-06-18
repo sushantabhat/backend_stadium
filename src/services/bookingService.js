@@ -11,6 +11,13 @@ function createHttpError(message, statusCode) {
   return error;
 }
 
+function getPricing(match) {
+  if (!match.pricing) return {};
+  return match.pricing instanceof Map
+    ? Object.fromEntries(match.pricing)
+    : match.pricing;
+}
+
 /**
  * Check if a seat's lock has expired.
  */
@@ -80,12 +87,12 @@ async function lockSeats(userId, matchId, seatIds) {
 
     updatedSeats.push(seat);
 
-    // Emit live seat status update via Socket.io
+    const pricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: match.pricing[seat.category] ?? seat.price,
+      price: pricing[seat.category] ?? seat.price,
       status: 'locked',
       lockedBy: userId,
       lockedUntil: lockedUntil,
@@ -120,11 +127,12 @@ async function unlockSeats(userId, matchId, seatIds) {
     updatedSeats.push(seat);
 
     // Emit live seat status update via Socket.io
+    const pricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: match?.pricing[seat.category] ?? seat.price,
+      price: pricing[seat.category] ?? seat.price,
       status: 'available',
       lockedBy: null,
       lockedUntil: null,
@@ -181,7 +189,8 @@ async function confirmBooking(userId, matchId, seatIds) {
   }
 
   // Calculate total amount server-side from current match pricing (never trust client)
-  const totalAmount = seats.reduce((sum, seat) => sum + (match.pricing[seat.category] ?? seat.price), 0);
+  const pricing = getPricing(match);
+  const totalAmount = seats.reduce((sum, seat) => sum + (pricing[seat.category] ?? seat.price), 0);
 
   // Create booking record
   const booking = await Booking.create({
@@ -216,11 +225,12 @@ async function confirmBooking(userId, matchId, seatIds) {
     tickets.push(ticket);
 
     // Emit live seat status update via Socket.io
+    const bookedPricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: seat.price,
+      price: bookedPricing[seat.category] ?? seat.price,
       status: 'booked',
       lockedBy: null,
       lockedUntil: null,

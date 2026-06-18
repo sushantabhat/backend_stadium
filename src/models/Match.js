@@ -1,5 +1,26 @@
 const mongoose = require('mongoose');
 
+const stadiumSectionSchema = new mongoose.Schema(
+  {
+    sectionId: { type: String, required: true, trim: true },
+    category: {
+      type: String,
+      enum: ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'],
+      required: true,
+    },
+    label: { type: String, required: true, trim: true },
+    color: { type: String, default: '#888888' },
+    polygon: { type: String, default: '' },
+    labelX: { type: Number, default: 0 },
+    labelY: { type: Number, default: 0 },
+    pricePerTicket: { type: Number, required: true, min: 0 },
+    totalSeats: { type: Number, required: true, min: 1 },
+    availableSeats: { type: Number, default: 0 },
+    rows: [{ type: String }],
+  },
+  { _id: false }
+);
+
 const matchSchema = new mongoose.Schema(
   {
     title: {
@@ -43,15 +64,17 @@ const matchSchema = new mongoose.Schema(
       required: true,
     },
     pricing: {
-      vip: { type: Number, required: true, min: 0 },
-      premium: { type: Number, required: true, min: 0 },
-      general: { type: Number, required: true, min: 0 },
+      type: Map,
+      of: Number,
+      default: {},
+    },
+    stadiumSections: {
+      type: [stadiumSectionSchema],
+      default: [],
     },
     seatLayout: {
-      rows: { type: Number, required: true, min: 1, max: 30 },
-      seatsPerRow: { type: Number, required: true, min: 1, max: 50 },
-      vipRows: { type: Number, required: true, min: 0 },
-      premiumRows: { type: Number, required: true, min: 0 },
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     totalSeats: {
       type: Number,

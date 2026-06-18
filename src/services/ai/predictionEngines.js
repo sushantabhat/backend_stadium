@@ -145,8 +145,9 @@ function predictSmartSeats(seatFeatures, userFeatures, matchFeatures) {
 
     // 4. Price sensitivity (mid-range seats are better value)
     if (matchFeatures && matchFeatures.pricing) {
-      const avgPrice = (matchFeatures.pricing.vip + matchFeatures.pricing.premium + matchFeatures.pricing.general) / 3;
-      const priceDiff = Math.abs(seat.price - avgPrice) / avgPrice;
+      const prices = Object.values(matchFeatures.pricing).filter((p) => typeof p === 'number' && p > 0);
+      const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+      const priceDiff = avgPrice > 0 ? Math.abs(seat.price - avgPrice) / avgPrice : 0;
       const valueScore = 1 - Math.min(priceDiff, 1);
       score += valueScore * 15;
       factors.priceValue = valueScore;
@@ -263,11 +264,12 @@ function predictDynamicPricing(matchFeatures, historicalFeatures) {
   }
 
   // Calculate suggested prices
-  const suggestedPricing = {
-    vip: Math.round(matchFeatures.pricing.vip * multiplier),
-    premium: Math.round(matchFeatures.pricing.premium * multiplier),
-    general: Math.round(matchFeatures.pricing.general * multiplier),
-  };
+  const suggestedPricing = {};
+  for (const [category, price] of Object.entries(matchFeatures.pricing || {})) {
+    if (typeof price === 'number') {
+      suggestedPricing[category] = Math.round(price * multiplier);
+    }
+  }
 
   return {
     matchId: matchFeatures.matchId,

@@ -102,19 +102,16 @@ async function getAdminAnalytics() {
     },
   ]);
 
-  const salesByCategory = {
-    vip: { count: 0, revenue: 0 },
-    premium: { count: 0, revenue: 0 },
-    general: { count: 0, revenue: 0 },
-  };
+  const salesByCategory = {};
 
   categorySales.forEach((item) => {
-    if (salesByCategory[item._id]) {
-      salesByCategory[item._id] = {
-        count: item.count,
-        revenue: item.revenue,
-      };
+    if (!salesByCategory[item._id]) {
+      salesByCategory[item._id] = { count: 0, revenue: 0 };
     }
+    salesByCategory[item._id] = {
+      count: item.count,
+      revenue: item.revenue,
+    };
   });
 
   // 3. Attendance Ratios

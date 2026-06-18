@@ -47,7 +47,7 @@ async function extractUserFeatures(userId) {
   });
 
   // Extract category preferences
-  const categoryCounts = { vip: 0, premium: 0, general: 0 };
+  const categoryCounts = {};
   bookings.forEach(b => {
     if (b.seats) {
       b.seats.forEach(seat => {
@@ -112,7 +112,8 @@ async function extractMatchFeatures(matchId) {
 
   // Category-wise availability
   const categoryStats = {};
-  for (const cat of ['vip', 'premium', 'general']) {
+  const categories = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+  for (const cat of categories) {
     const catTotal = await Seat.countDocuments({ match: matchId, category: cat });
     const catBooked = await Seat.countDocuments({ match: matchId, category: cat, status: 'booked' });
     categoryStats[cat] = {
@@ -179,7 +180,8 @@ async function extractSeatFeatures(matchId, category = null) {
   if (category) query.category = category;
 
   const seats = await Seat.find(query);
-  const seatsPerRow = match.seatLayout.seatsPerRow;
+  const seatLayout = match.seatLayout || {};
+  const seatsPerRow = seatLayout.seatsPerRow || 20;
   const centerCol = Math.ceil(seatsPerRow / 2);
 
   // Calculate features for each seat
@@ -205,7 +207,8 @@ async function extractSeatFeatures(matchId, category = null) {
 
   // Category statistics
   const categoryStats = {};
-  for (const cat of ['vip', 'premium', 'general']) {
+  const seatCategories = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+  for (const cat of seatCategories) {
     const catSeats = seats.filter(s => s.category === cat);
     categoryStats[cat] = {
       total: catSeats.length,
@@ -351,7 +354,7 @@ async function extractHistoricalFeatures(matchId) {
   });
 
   // Revenue by category
-  const revenueByCategory = { vip: 0, premium: 0, general: 0 };
+  const revenueByCategory = {};
   for (const booking of bookings) {
     const seats = await Seat.find({ _id: { $in: booking.seats } });
     seats.forEach(seat => {
@@ -361,7 +364,9 @@ async function extractHistoricalFeatures(matchId) {
 
   // Average ticket price
   const totalRevenue = Object.values(revenueByCategory).reduce((a, b) => a + b, 0);
-  const avgTicketPrice = bookings.length > 0 ? totalRevenue / bookings.length : match.pricing.general;
+  const pricingObj = match.pricing instanceof Map ? Object.fromEntries(match.pricing) : match.pricing || {};
+  const defaultPrice = Object.values(pricingObj).find((p) => typeof p === 'number') || 0;
+  const avgTicketPrice = bookings.length > 0 ? totalRevenue / bookings.length : defaultPrice;
 
   // Demand trend (acceleration/deceleration)
   const salesVelocity = salesByPeriod.last24h;
