@@ -188,7 +188,7 @@ async function getMatchSeats(matchId, { category } = {}) {
       row: seat.row,
       number: seat.number,
       category: seat.category,
-      price: seat.price,
+      price: match.pricing[seat.category] ?? seat.price,
       status,
     };
   });

@@ -85,7 +85,7 @@ async function lockSeats(userId, matchId, seatIds) {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: seat.price,
+      price: match.pricing[seat.category] ?? seat.price,
       status: 'locked',
       lockedBy: userId,
       lockedUntil: lockedUntil,
@@ -103,6 +103,7 @@ async function unlockSeats(userId, matchId, seatIds) {
     return [];
   }
 
+  const match = await Match.findById(matchId);
   const seats = await Seat.find({
     _id: { $in: seatIds },
     match: matchId,
@@ -123,7 +124,7 @@ async function unlockSeats(userId, matchId, seatIds) {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: seat.price,
+      price: match?.pricing[seat.category] ?? seat.price,
       status: 'available',
       lockedBy: null,
       lockedUntil: null,
@@ -179,8 +180,8 @@ async function confirmBooking(userId, matchId, seatIds) {
     }
   }
 
-  // Calculate total amount server-side from actual seat prices (never trust client)
-  const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
+  // Calculate total amount server-side from current match pricing (never trust client)
+  const totalAmount = seats.reduce((sum, seat) => sum + (match.pricing[seat.category] ?? seat.price), 0);
 
   // Create booking record
   const booking = await Booking.create({
