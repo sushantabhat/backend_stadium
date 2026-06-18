@@ -219,6 +219,19 @@ async function updateMatch(matchId, updates) {
         match.pricing[tier] = value;
       }
     });
+
+    const bulkOps = ['vip', 'premium', 'general']
+      .filter((tier) => pricing[tier] !== undefined)
+      .map((tier) => ({
+        updateMany: {
+          filter: { match: matchId, category: tier, status: 'available' },
+          update: { price: Number(pricing[tier]) },
+        },
+      }));
+
+    if (bulkOps.length > 0) {
+      await Seat.bulkWrite(bulkOps);
+    }
   }
 
   let seatsRegenerated = false;
