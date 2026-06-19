@@ -9,6 +9,20 @@ function createHttpError(message, statusCode) {
   return error;
 }
 
+function formatNepalTime(date) {
+  if (!date) return 'unknown';
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kathmandu',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(date));
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * Fetch tickets for the logged-in fan.
  */
@@ -71,13 +85,13 @@ async function verifyTicket(staffId, ticketCode) {
         match: existingTicket.match,
         scannedBy: staffId,
         reason: 'duplicate_scan',
-        details: `Duplicate scan attempt at ${new Date().toLocaleTimeString()}. Original entry at ${existingTicket.usedAt?.toLocaleTimeString() || 'unknown'}.`,
+        details: `Duplicate scan attempt at ${formatNepalTime(new Date())}. Original entry at ${formatNepalTime(existingTicket.usedAt)}.`,
       });
     } catch (fraudErr) {
       console.error('[TicketVerify] Fraud log write failed (non-fatal):', fraudErr.message);
     }
     throw createHttpError(
-      `Ticket already used at ${existingTicket.usedAt?.toLocaleTimeString() || 'unknown time'}. Duplicate entry denied.`,
+      `Ticket already used at ${formatNepalTime(existingTicket.usedAt)}. Duplicate entry denied.`,
       409
     );
   }
@@ -105,7 +119,7 @@ async function verifyTicket(staffId, ticketCode) {
     console.log(`[TicketVerify] RACE CONDITION code="${trimmedCode}" — ticket was marked used between read and write`);
     const raceTicket = await Ticket.findById(existingTicket._id);
     throw createHttpError(
-      `Ticket already used at ${raceTicket?.usedAt?.toLocaleTimeString() || 'unknown time'}. Duplicate entry denied.`,
+      `Ticket already used at ${formatNepalTime(raceTicket?.usedAt)}. Duplicate entry denied.`,
       409
     );
   }
