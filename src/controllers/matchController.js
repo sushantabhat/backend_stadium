@@ -177,7 +177,7 @@ async function updateMatch(req, res, next) {
         if (!s.category) {
           throw createHttpError(`stadiumSections[${i}].category is required`, 400);
         }
-        const validCategories = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+        const validCategories = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
         if (!validCategories.includes(s.category)) {
           throw createHttpError(`stadiumSections[${i}].category must be one of: ${validCategories.join(', ')}`, 400);
         }

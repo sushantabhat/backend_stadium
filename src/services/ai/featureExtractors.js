@@ -112,7 +112,7 @@ async function extractMatchFeatures(matchId) {
 
   // Category-wise availability
   const categoryStats = {};
-  const categories = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+  const categories = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
   for (const cat of categories) {
     const catTotal = await Seat.countDocuments({ match: matchId, category: cat });
     const catBooked = await Seat.countDocuments({ match: matchId, category: cat, status: 'booked' });
@@ -207,7 +207,7 @@ async function extractSeatFeatures(matchId, category = null) {
 
   // Category statistics
   const categoryStats = {};
-  const seatCategories = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+  const seatCategories = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
   for (const cat of seatCategories) {
     const catSeats = seats.filter(s => s.category === cat);
     categoryStats[cat] = {

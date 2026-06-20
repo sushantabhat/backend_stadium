@@ -9,7 +9,7 @@ const STADIUM_SECTIONS = [
   // North End
   {
     sectionId: '101',
-    category: 'category2',
+    category: 'silver',
     label: 'North Lower 101',
     color: '#FF6B6B',
     polygon: 'M140,60 L260,60 L270,90 L130,90 Z',
@@ -19,7 +19,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '102',
-    category: 'category2',
+    category: 'silver',
     label: 'North Lower 102',
     color: '#FF6B6B',
     polygon: 'M100,70 L140,60 L130,90 L90,100 Z',
@@ -29,7 +29,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '103',
-    category: 'category2',
+    category: 'silver',
     label: 'North Lower 103',
     color: '#FF6B6B',
     polygon: 'M260,60 L300,70 L310,100 L270,90 Z',
@@ -41,7 +41,7 @@ const STADIUM_SECTIONS = [
   // West Stand (left side)
   {
     sectionId: '104',
-    category: 'category3',
+    category: 'bronze',
     label: 'West Lower 104',
     color: '#A29BFE',
     polygon: 'M60,100 L90,100 L80,170 L50,170 Z',
@@ -51,7 +51,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '105',
-    category: 'category3',
+    category: 'bronze',
     label: 'West Lower 105',
     color: '#A29BFE',
     polygon: 'M50,170 L80,170 L70,240 L40,240 Z',
@@ -63,7 +63,7 @@ const STADIUM_SECTIONS = [
   // East Stand (right side)
   {
     sectionId: '106',
-    category: 'category3',
+    category: 'bronze',
     label: 'East Lower 106',
     color: '#A29BFE',
     polygon: 'M310,100 L340,100 L350,170 L320,170 Z',
@@ -73,7 +73,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '107',
-    category: 'category3',
+    category: 'bronze',
     label: 'East Lower 107',
     color: '#A29BFE',
     polygon: 'M320,170 L350,170 L360,240 L330,240 Z',
@@ -85,7 +85,7 @@ const STADIUM_SECTIONS = [
   // South End (behind goal)
   {
     sectionId: '108',
-    category: 'category2',
+    category: 'silver',
     label: 'South Lower 108',
     color: '#FF6B6B',
     polygon: 'M130,260 L270,260 L260,290 L140,290 Z',
@@ -95,7 +95,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '109',
-    category: 'category2',
+    category: 'silver',
     label: 'South Lower 109',
     color: '#FF6B6B',
     polygon: 'M90,250 L130,260 L140,290 L100,290 Z',
@@ -105,7 +105,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '110',
-    category: 'category2',
+    category: 'silver',
     label: 'South Lower 110',
     color: '#FF6B6B',
     polygon: 'M270,260 L310,250 L300,290 L260,290 Z',
@@ -118,7 +118,7 @@ const STADIUM_SECTIONS = [
   // North Upper
   {
     sectionId: '318',
-    category: 'category1',
+    category: 'gold',
     label: 'North Upper 318',
     color: '#FFD700',
     polygon: 'M130,30 L270,30 L280,55 L120,55 Z',
@@ -130,7 +130,7 @@ const STADIUM_SECTIONS = [
   // West Upper
   {
     sectionId: '319',
-    category: 'category1',
+    category: 'gold',
     label: 'West Upper 319',
     color: '#FFD700',
     polygon: 'M30,100 L50,100 L40,170 L20,170 Z',
@@ -140,7 +140,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '320',
-    category: 'category1',
+    category: 'gold',
     label: 'West Upper 320',
     color: '#FFD700',
     polygon: 'M20,170 L40,170 L30,240 L10,240 Z',
@@ -152,7 +152,7 @@ const STADIUM_SECTIONS = [
   // East Upper
   {
     sectionId: '321',
-    category: 'category1',
+    category: 'gold',
     label: 'East Upper 321',
     color: '#FFD700',
     polygon: 'M350,100 L370,100 L380,170 L360,170 Z',
@@ -162,7 +162,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '322',
-    category: 'category1',
+    category: 'gold',
     label: 'East Upper 322',
     color: '#FFD700',
     polygon: 'M360,170 L380,170 L390,240 L370,240 Z',
@@ -174,7 +174,7 @@ const STADIUM_SECTIONS = [
   // South Upper
   {
     sectionId: '323',
-    category: 'category1',
+    category: 'gold',
     label: 'South Upper 323',
     color: '#FFD700',
     polygon: 'M120,300 L280,300 L270,325 L130,325 Z',
@@ -186,7 +186,7 @@ const STADIUM_SECTIONS = [
   // ─── CORNER SECTIONS ───
   {
     sectionId: '201',
-    category: 'category4',
+    category: 'general',
     label: 'North West Corner 201',
     color: '#EF5350',
     polygon: 'M90,80 L120,60 L120,90 L80,100 Z',
@@ -196,7 +196,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '202',
-    category: 'category4',
+    category: 'general',
     label: 'North East Corner 202',
     color: '#EF5350',
     polygon: 'M280,60 L310,80 L320,100 L280,90 Z',
@@ -206,7 +206,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '203',
-    category: 'category4',
+    category: 'general',
     label: 'South West Corner 203',
     color: '#EF5350',
     polygon: 'M80,250 L120,260 L120,290 L90,290 Z',
@@ -216,7 +216,7 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: '204',
-    category: 'category4',
+    category: 'general',
     label: 'South East Corner 204',
     color: '#EF5350',
     polygon: 'M280,260 L320,250 L310,290 L280,290 Z',
@@ -225,12 +225,12 @@ const STADIUM_SECTIONS = [
     totalSeats: 180,
   },
 
-  // ─── VIP BOXES ───
+  // ─── PLATINUM BOXES ───
   {
     sectionId: 'VIP1',
-    category: 'vip',
-    label: 'VIP West 1',
-    color: '#FFB300',
+    category: 'platinum',
+    label: 'Platinum West 1',
+    color: '#E8E8E8',
     polygon: 'M50,140 L80,140 L80,200 L50,200 Z',
     labelX: 65, labelY: 173,
     rows: ['V1', 'V2'],
@@ -238,9 +238,9 @@ const STADIUM_SECTIONS = [
   },
   {
     sectionId: 'VIP2',
-    category: 'vip',
-    label: 'VIP East 2',
-    color: '#FFB300',
+    category: 'platinum',
+    label: 'Platinum East 2',
+    color: '#E8E8E8',
     polygon: 'M320,140 L350,140 L350,200 L320,200 Z',
     labelX: 335, labelY: 173,
     rows: ['V1', 'V2'],

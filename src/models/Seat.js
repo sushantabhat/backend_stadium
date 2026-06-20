@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const SEAT_CATEGORIES = ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'];
+const SEAT_CATEGORIES = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
 
 const seatSchema = new mongoose.Schema(
   {

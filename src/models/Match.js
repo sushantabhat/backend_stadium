@@ -5,7 +5,7 @@ const stadiumSectionSchema = new mongoose.Schema(
     sectionId: { type: String, required: true, trim: true },
     category: {
       type: String,
-      enum: ['category1', 'category2', 'category3', 'category4', 'vip', 'supporters'],
+      enum: ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'],
       required: true,
     },
     label: { type: String, required: true, trim: true },

@@ -5,7 +5,6 @@ const Booking = require('../models/Booking');
 const { SEAT_CATEGORIES } = require('../models/Seat');
 
 const GATE_RULES = [
-  { keywords: ['vip'], gate: 'VIP Entrance' },
   { keywords: ['supporters'], gate: 'Supporters Entrance' },
   { keywords: ['north'], gate: 'North Gate' },
   { keywords: ['south'], gate: 'South Gate' },
@@ -68,12 +67,12 @@ function buildSeatDocuments(match) {
 
     for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
       const rowLabel = String.fromCharCode(65 + rowIndex);
-      let category = 'category2';
+      let category = 'silver';
 
       if (rowIndex < vipRows) {
-        category = 'vip';
+        category = 'platinum';
       } else if (rowIndex < vipRows + premiumRows) {
-        category = 'category1';
+        category = 'gold';
       }
 
       const price = match.pricing?.[category] || 0;

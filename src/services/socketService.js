@@ -53,7 +53,7 @@ function emitSeatUpdate(matchId, seatData) {
 /**
  * Broadcast attendance update to administrative dashboard rooms.
  * @param {string} matchId - The match ID.
- * @param {object} attendanceData - Live metrics update: { matchId, totalSeats, bookedSeats, attendedCount, entryRate, vipRate, premiumRate, generalRate }
+ * @param {object} attendanceData - Live metrics update: { matchId, totalSeats, bookedSeats, attendedCount, entryRate, premiumRate, generalRate }
  */
 function emitAttendanceUpdate(matchId, attendanceData) {
   if (!io) return;
