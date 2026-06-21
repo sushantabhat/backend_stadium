@@ -123,6 +123,12 @@ async function getSeatStats(matchId) {
       $group: {
         _id: '$category',
         count: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] },
+        },
+        booked: {
+          $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
+        },
       },
     },
   ]);
@@ -131,6 +137,8 @@ async function getSeatStats(matchId) {
   const categoryMap = {};
   categoryStats.forEach((cs) => {
     categoryMap[cs._id] = cs.count;
+    categoryMap[`${cs._id}_available`] = cs.available;
+    categoryMap[`${cs._id}_booked`] = cs.booked;
   });
 
   return {
