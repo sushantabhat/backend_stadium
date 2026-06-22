@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
+const { processRefundForBooking } = require('./refundService');
 const { SEAT_CATEGORIES } = require('../models/Seat');
 
 const GATE_RULES = [
@@ -412,8 +413,22 @@ async function cancelMatch(matchId) {
 
   const Ticket = require('../models/Ticket');
 
-  const bookingsResult = await Booking.updateMany(
-    { match: matchId, status: { $in: ['confirmed', 'pending'] } },
+  const bookingsToCancel = await Booking.find(
+    { match: matchId, status: { $in: ['confirmed', 'pending'] } }
+  );
+
+  const refunds = [];
+  for (const booking of bookingsToCancel) {
+    try {
+      const refund = await processRefundForBooking(booking, 'match_cancelled');
+      refunds.push(refund);
+    } catch {
+      // refund failure shouldn't block cancellation
+    }
+  }
+
+  await Booking.updateMany(
+    { _id: { $in: bookingsToCancel.map(b => b._id) } },
     { status: 'cancelled' }
   );
 
@@ -428,9 +443,13 @@ async function cancelMatch(matchId) {
   );
 
   const seatStats = await getSeatStats(match._id);
+  const refundTotal = refunds.reduce((sum, r) => sum + r.amount, 0);
+  console.log(`[MATCH] "${match.title}" cancelled — ${refunds.length} refunds totalling Rs.${refundTotal}`);
   return {
     ...formatMatch(match, seatStats),
-    cancelledBookings: bookingsResult.modifiedCount,
+    cancelledBookings: bookingsToCancel.length,
+    refundsProcessed: refunds.length,
+    refundAmount: refundTotal,
     invalidatedTickets: ticketsResult.modifiedCount,
     releasedSeats: seatsResult.modifiedCount,
   };

@@ -1,6 +1,7 @@
 const Ticket = require('../models/Ticket');
 const Seat = require('../models/Seat');
 const AttendanceLog = require('../models/AttendanceLog');
+const Refund = require('../models/Refund');
 const socketService = require('./socketService');
 
 function createHttpError(message, statusCode) {
@@ -27,10 +28,36 @@ function formatNepalTime(date) {
  * Fetch tickets for the logged-in fan.
  */
 async function getMyTickets(userId) {
-  return Ticket.find({ user: userId })
+  const tickets = await Ticket.find({ user: userId })
     .populate('match')
     .populate('seat', 'seatLabel category price gate')
     .sort({ createdAt: -1 });
+
+  const refunds = await Refund.find({ user: userId, status: { $in: ['processing', 'completed'] } })
+    .select('booking status amount estimatedSettlementDate settledAt refundId gatewayRefundId')
+    .lean();
+
+  const refundMap = {};
+  for (const r of refunds) {
+    refundMap[r.booking.toString()] = r;
+  }
+
+  return tickets.map(t => {
+    const tJson = t.toObject();
+    const bookingId = tJson.booking?.toString();
+    const refund = bookingId ? refundMap[bookingId] : null;
+    if (refund) {
+      tJson.refund = {
+        status: refund.status,
+        amount: refund.amount,
+        estimatedSettlementDate: refund.estimatedSettlementDate,
+        settledAt: refund.settledAt,
+        refundId: refund.refundId,
+        gatewayRefundId: refund.gatewayRefundId,
+      };
+    }
+    return tJson;
+  });
 }
 
 /**
