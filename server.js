@@ -15,7 +15,6 @@ const bookingRoutes = require('./src/routes/bookingRoutes');
 const ticketRoutes = require('./src/routes/ticketRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
-const { paymentRoutes } = require('./src/routes/paymentRoutes');
 const { khaltiPaymentRoutes } = require('./src/routes/khaltiPaymentRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
@@ -36,7 +35,6 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/payments', paymentRoutes);
 app.use('/api/payments/khalti', khaltiPaymentRoutes);
 
 app.get('/', (req, res) => {
