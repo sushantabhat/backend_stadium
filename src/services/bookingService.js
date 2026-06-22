@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Ticket = require('../models/Ticket');
@@ -210,9 +211,10 @@ async function confirmBooking(userId, matchId, seatIds) {
     seat.lockedUntil = null;
     await seat.save();
 
-    // Generate unique ticket verification code (e.g. STADIUM-MATCHID-SEATID-RANDOM)
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const ticketCode = `TKT-${matchId.toString().substring(18)}-${seat.seatLabel}-${randomSuffix}`;
+    // Generate unique ticket verification code using crypto
+    const randomSuffix = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const matchPart = matchId.toString().slice(-6);
+    const ticketCode = `TKT-${matchPart}-${seat.seatLabel}-${randomSuffix}`;
 
     const ticket = await Ticket.create({
       booking: booking._id,

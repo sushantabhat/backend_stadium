@@ -73,7 +73,7 @@ function validateCreatePayload(body) {
         labelY: Number(s.labelY) || 0,
         pricePerTicket: price,
         totalSeats: Number(s.totalSeats),
-        availableSeats: Number(s.availableSeats) || Number(s.totalSeats),
+        availableSeats: s.availableSeats != null ? Number(s.availableSeats) : Number(s.totalSeats),
         rows: Array.isArray(s.rows) ? s.rows : [],
         gate: s.gate || '',
       };
@@ -197,7 +197,7 @@ async function updateMatch(req, res, next) {
           labelY: Number(s.labelY) || 0,
           pricePerTicket: Number(s.pricePerTicket) || 0,
           totalSeats: Number(s.totalSeats) || 0,
-          availableSeats: Number(s.availableSeats) || Number(s.totalSeats) || 0,
+          availableSeats: s.availableSeats != null ? Number(s.availableSeats) : (Number(s.totalSeats) || 0),
           rows: (s.rows || []).map((r) => String(r).trim()).filter(Boolean),
           gate: s.gate || '',
         });

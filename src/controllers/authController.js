@@ -111,7 +111,7 @@ function validateEmail(email) {
   return null;
 }
 
-function validateCredentials({ name, email, password, requireName }) {
+function validateCredentials({ name, email, password, requireName, checkPasswordLength = true }) {
   if (requireName) {
     if (!name || !name.trim()) {
       const error = new Error('Name is required');
@@ -137,7 +137,7 @@ function validateCredentials({ name, email, password, requireName }) {
     error.statusCode = 400;
     throw error;
   }
-  if (password.length < 8) {
+  if (checkPasswordLength && password.length < 8) {
     const error = new Error('Password must be at least 8 characters');
     error.statusCode = 400;
     throw error;
@@ -163,7 +163,7 @@ async function register(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
-    validateCredentials({ email, password, requireName: false });
+    validateCredentials({ email, password, requireName: false, checkPasswordLength: false });
 
     const result = await authService.loginUser({ email, password });
 

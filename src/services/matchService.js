@@ -410,9 +410,16 @@ async function cancelMatch(matchId) {
   match.status = 'cancelled';
   await match.save();
 
+  const Ticket = require('../models/Ticket');
+
   const bookingsResult = await Booking.updateMany(
     { match: matchId, status: { $in: ['confirmed', 'pending'] } },
     { status: 'cancelled' }
+  );
+
+  const ticketsResult = await Ticket.updateMany(
+    { match: matchId, status: 'active' },
+    { status: 'used', usedAt: new Date() }
   );
 
   const seatsResult = await Seat.updateMany(
@@ -424,6 +431,7 @@ async function cancelMatch(matchId) {
   return {
     ...formatMatch(match, seatStats),
     cancelledBookings: bookingsResult.modifiedCount,
+    invalidatedTickets: ticketsResult.modifiedCount,
     releasedSeats: seatsResult.modifiedCount,
   };
 }
