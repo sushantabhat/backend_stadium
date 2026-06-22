@@ -3,19 +3,22 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+
+const envResult = require('dotenv').config({
+  path: path.join(__dirname, '.env'),
+  override: true,
+});
+
 const authRoutes = require('./src/routes/authRoutes');
 const matchRoutes = require('./src/routes/matchRoutes');
 const bookingRoutes = require('./src/routes/bookingRoutes');
 const ticketRoutes = require('./src/routes/ticketRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
+const { paymentRoutes } = require('./src/routes/paymentRoutes');
+const { khaltiPaymentRoutes } = require('./src/routes/khaltiPaymentRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
-
-const envResult = require('dotenv').config({
-  path: path.join(__dirname, '.env'),
-  override: true,
-});
 
 const app = express();
 const port = Number(process.env.PORT || 5001);
@@ -33,6 +36,8 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/payments/khalti', khaltiPaymentRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Smart Stadium backend is running' });
