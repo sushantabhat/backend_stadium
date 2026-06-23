@@ -120,6 +120,7 @@ async function verifyTicket(staffId, ticketCode) {
         match: existingTicket.match,
         scannedBy: staffId,
         reason: 'duplicate_scan',
+        status: 'open',
         details: `Duplicate scan attempt at ${formatNepalTime(new Date())}. Original entry at ${formatNepalTime(existingTicket.usedAt)}.`,
       });
     } catch (fraudErr) {
@@ -164,12 +165,14 @@ async function verifyTicket(staffId, ticketCode) {
   // Step 3: Create attendance log
   let log = null;
   try {
+    const gateLabel = ticket.seat?.gate || '';
     log = await AttendanceLog.create({
       ticket: ticket._id,
       match: ticket.match?._id || ticket.match,
       user: ticket.user?._id || ticket.user,
       seat: ticket.seat?._id || ticket.seat,
       scannedBy: staffId,
+      gate: gateLabel,
       entryTime: ticket.usedAt,
     });
     console.log(`[TicketVerify] LOG CREATED logId=${log._id}`);

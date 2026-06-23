@@ -9,6 +9,7 @@ const stadiumSectionSchema = new mongoose.Schema({
   pricePerTicket: { type: Number, default: 0 },
   totalSeats: { type: Number, default: 0 },
   rows: [{ type: String }],
+  gate: { type: String, default: '' },
 }, { _id: false });
 
 const venueSchema = new mongoose.Schema({
@@ -16,6 +17,7 @@ const venueSchema = new mongoose.Schema({
   location: { type: String, default: '' },
   pricing: { type: Map, of: Number, default: {} },
   stadiumSections: { type: [stadiumSectionSchema], default: [] },
+  gates: { type: [String], default: [] },
   seatLayout: { type: mongoose.Schema.Types.Mixed, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 }, { timestamps: true });

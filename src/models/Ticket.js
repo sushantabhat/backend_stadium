@@ -46,5 +46,6 @@ const ticketSchema = new mongoose.Schema(
 ticketSchema.index({ match: 1 });
 ticketSchema.index({ user: 1 });
 ticketSchema.index({ status: 1 });
+ticketSchema.index({ match: 1, status: 1 });
 
 module.exports = mongoose.model('Ticket', ticketSchema);

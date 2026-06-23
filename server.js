@@ -19,6 +19,7 @@ const { khaltiPaymentRoutes } = require('./src/routes/khaltiPaymentRoutes');
 const { mockCardPaymentRoutes } = require('./src/routes/mockCardPaymentRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 const uploadRoutes = require('./src/routes/uploadRoutes');
+const shiftRoutes = require('./src/routes/shiftRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
 
@@ -45,6 +46,7 @@ app.use('/api/payments/khalti', khaltiPaymentRoutes);
 app.use('/api/payments/card', mockCardPaymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/shifts', shiftRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Smart Stadium backend is running' });

@@ -31,6 +31,11 @@ const attendanceLogSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    gate: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
   { timestamps: true }
 );
@@ -38,5 +43,6 @@ const attendanceLogSchema = new mongoose.Schema(
 attendanceLogSchema.index({ match: 1 });
 attendanceLogSchema.index({ scannedBy: 1 });
 attendanceLogSchema.index({ entryTime: 1 });
+attendanceLogSchema.index({ match: 1, gate: 1 });
 
 module.exports = mongoose.model('AttendanceLog', attendanceLogSchema);

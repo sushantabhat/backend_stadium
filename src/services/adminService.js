@@ -120,23 +120,48 @@ async function getAdminAnalytics() {
   const entryRate = totalTickets > 0 ? ((scannedTickets / totalTickets) * 100).toFixed(1) : '0.0';
 
   // 4. Match-wise Performance Occupancy
-  const matches = await Match.find().lean();
   const matchPerformance = [];
 
-  for (const match of matches) {
-    const totalMatchSeats = await Seat.countDocuments({ match: match._id });
-    const bookedMatchSeats = await Seat.countDocuments({ match: match._id, status: 'booked' });
-    const matchRevenueResult = await Booking.aggregate([
-      { $match: { match: match._id, status: 'confirmed' } },
-      { $group: { _id: null, total: { $sum: '$totalAmount' } } },
-    ]);
-    const matchRevenue = matchRevenueResult[0]?.total || 0;
+  const seatStats = await Seat.aggregate([
+    {
+      $group: {
+        _id: { match: '$match', status: '$status' },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
 
+  const bookingRevenue = await Booking.aggregate([
+    { $match: { status: 'confirmed' } },
+    {
+      $group: {
+        _id: '$match',
+        revenue: { $sum: '$totalAmount' },
+      },
+    },
+  ]);
+
+  const revenueMap = {};
+  for (const b of bookingRevenue) {
+    revenueMap[b._id.toString()] = b.revenue;
+  }
+
+  const seatMap = {};
+  for (const s of seatStats) {
+    const mid = s._id.match.toString();
+    if (!seatMap[mid]) seatMap[mid] = { total: 0, booked: 0 };
+    seatMap[mid].total += s.count;
+    if (s._id.status === 'booked') seatMap[mid].booked += s.count;
+  }
+
+  const matches = await Match.find().lean();
+  for (const match of matches) {
+    const stats = seatMap[match._id.toString()] || { total: 0, booked: 0 };
     matchPerformance.push({
       matchId: match._id,
       title: match.title,
-      occupancy: totalMatchSeats > 0 ? ((bookedMatchSeats / totalMatchSeats) * 100).toFixed(1) : '0.0',
-      revenue: matchRevenue,
+      occupancy: stats.total > 0 ? ((stats.booked / stats.total) * 100).toFixed(1) : '0.0',
+      revenue: revenueMap[match._id.toString()] || 0,
     });
   }
 
@@ -186,19 +211,116 @@ async function getAllTickets() {
 /**
  * Fetch logs representing rejected ticket check-in attempts.
  */
-async function getFraudLogs() {
-  return FraudLog.find()
+async function getFraudLogs(status) {
+  const filter = status ? { status } : {};
+  return FraudLog.find(filter)
     .populate({
       path: 'ticket',
       populate: [
         { path: 'seat', select: 'seatLabel category price' },
-        { path: 'user', select: 'name' },
+        { path: 'user', select: 'name email' },
       ],
     })
     .populate('match')
     .populate('scannedBy', 'name email')
     .sort({ timestamp: -1 })
-    .limit(30);
+    .limit(50);
+}
+
+/**
+ * Fetch a single fraud log with full details.
+ */
+async function getFraudLogById(id) {
+  const log = await FraudLog.findById(id)
+    .populate({
+      path: 'ticket',
+      populate: [
+        { path: 'seat', select: 'seatLabel category price gate' },
+        { path: 'user', select: 'name email phone' },
+      ],
+    })
+    .populate('match', 'title teamA teamB matchDate status venue')
+    .populate('scannedBy', 'name email')
+    .populate('resolvedBy', 'name');
+  if (!log) {
+    const err = new Error('Fraud log not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  return log;
+}
+
+/**
+ * Get all attendance logs for a given ticket.
+ */
+async function getAttendanceLogsForTicket(ticketId) {
+  return AttendanceLog.find({ ticket: ticketId })
+    .populate('scannedBy', 'name')
+    .sort({ entryTime: -1 });
+}
+
+/**
+ * Resolve a fraud log — dismiss or allow entry.
+ */
+async function resolveFraudLog(logId, resolution, notes, userId) {
+  const log = await FraudLog.findById(logId);
+  if (!log) {
+    const err = new Error('Fraud log not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (log.status !== 'open') {
+    const err = new Error(`Fraud log is already ${log.status}`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  log.status = 'resolved';
+  log.resolution = resolution;
+  log.notes = notes || '';
+  log.resolvedBy = userId;
+  log.resolvedAt = new Date();
+  await log.save();
+
+  if (resolution === 'allowed' && log.ticket) {
+    try {
+      await AttendanceLog.create({
+        ticket: log.ticket,
+        match: log.match,
+        scannedBy: userId,
+        entryTime: new Date(),
+      });
+    } catch (err) {
+      console.error('[resolveFraudLog] Failed to create attendance log:', err.message);
+    }
+  }
+
+  return log;
+}
+
+/**
+ * Escalate a fraud log to admin.
+ */
+async function escalateFraudLog(logId, notes, userId) {
+  const log = await FraudLog.findById(logId);
+  if (!log) {
+    const err = new Error('Fraud log not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (log.status !== 'open') {
+    const err = new Error(`Fraud log is already ${log.status}`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  log.status = 'escalated';
+  log.notes = notes || '';
+  log.resolvedBy = userId;
+  log.resolvedAt = new Date();
+  await log.save();
+
+  return log;
 }
 
 module.exports = {
@@ -209,4 +331,8 @@ module.exports = {
   getAdminAnalytics,
   getAllTickets,
   getFraudLogs,
+  getFraudLogById,
+  getAttendanceLogsForTicket,
+  resolveFraudLog,
+  escalateFraudLog,
 };

@@ -65,8 +65,50 @@ async function getAnalytics(req, res, next) {
 
 async function getFraudLogs(req, res, next) {
   try {
-    const fraudLogs = await adminService.getFraudLogs();
+    const { status } = req.query;
+    const fraudLogs = await adminService.getFraudLogs(status);
     res.status(200).json({ fraudLogs });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getFraudLogById(req, res, next) {
+  try {
+    const log = await adminService.getFraudLogById(req.params.id);
+    res.status(200).json({ fraudLog: log });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getFraudLogAttendance(req, res, next) {
+  try {
+    const logs = await adminService.getAttendanceLogsForTicket(req.params.id);
+    res.status(200).json({ attendanceLogs: logs });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function resolveFraudLog(req, res, next) {
+  try {
+    const { resolution, notes } = req.body;
+    if (!['dismissed', 'allowed'].includes(resolution)) {
+      return res.status(400).json({ message: 'Resolution must be "dismissed" or "allowed"' });
+    }
+    const log = await adminService.resolveFraudLog(req.params.id, resolution, notes, req.user.id);
+    res.status(200).json({ message: 'Incident resolved', fraudLog: log });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function escalateFraudLog(req, res, next) {
+  try {
+    const { notes } = req.body;
+    const log = await adminService.escalateFraudLog(req.params.id, notes, req.user.id);
+    res.status(200).json({ message: 'Incident escalated', fraudLog: log });
   } catch (error) {
     next(error);
   }
@@ -88,5 +130,9 @@ module.exports = {
   deleteUser,
   getAnalytics,
   getFraudLogs,
+  getFraudLogById,
+  getFraudLogAttendance,
+  resolveFraudLog,
+  escalateFraudLog,
   getAllTickets,
 };

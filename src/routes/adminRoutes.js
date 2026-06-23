@@ -16,6 +16,10 @@ router.delete('/users/:id', adminController.deleteUser);
 router.get('/analytics', adminController.getAnalytics);
 router.get('/tickets', adminController.getAllTickets);
 router.get('/fraud-logs', adminController.getFraudLogs);
+router.get('/fraud-logs/:id', adminController.getFraudLogById);
+router.get('/fraud-logs/:id/attendance', adminController.getFraudLogAttendance);
+router.put('/fraud-logs/:id/resolve', adminController.resolveFraudLog);
+router.put('/fraud-logs/:id/escalate', adminController.escalateFraudLog);
 
 router.get('/venues', async (req, res) => {
   try {
@@ -28,13 +32,14 @@ router.get('/venues', async (req, res) => {
 
 router.post('/venues', async (req, res) => {
   try {
-    const { name, location, pricing, stadiumSections, seatLayout } = req.body;
+    const { name, location, pricing, stadiumSections, seatLayout, gates } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Venue name is required' });
     const venue = await Venue.create({
       name: name.trim(),
       location: location || '',
       pricing: pricing || {},
       stadiumSections: stadiumSections || [],
+      gates: gates || [],
       seatLayout: seatLayout || null,
       createdBy: req.user.id,
     });
@@ -46,10 +51,10 @@ router.post('/venues', async (req, res) => {
 
 router.put('/venues/:id', async (req, res) => {
   try {
-    const { name, location, pricing, stadiumSections, seatLayout } = req.body;
+    const { name, location, pricing, stadiumSections, seatLayout, gates } = req.body;
     const venue = await Venue.findByIdAndUpdate(
       req.params.id,
-      { name, location, pricing, stadiumSections, seatLayout },
+      { name, location, pricing, stadiumSections, seatLayout, gates },
       { returnDocument: 'after', runValidators: true }
     );
     if (!venue) return res.status(404).json({ message: 'Venue not found' });

@@ -172,6 +172,7 @@ function formatMatch(match, seatStats) {
     status: match.status,
     pricing: pricingObj,
     stadiumSections: match.stadiumSections || [],
+    venueGates: match.venueGates || [],
     seatLayout: match.seatLayout,
     totalSeats: match.totalSeats,
     createdBy: match.createdBy,

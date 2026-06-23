@@ -81,6 +81,7 @@ const matchSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    venueGates: { type: [String], default: [] },
     imageUrl: {
       type: String,
       trim: true,

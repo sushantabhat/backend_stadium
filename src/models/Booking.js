@@ -33,4 +33,8 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+bookingSchema.index({ user: 1 });
+bookingSchema.index({ match: 1 });
+bookingSchema.index({ match: 1, status: 1 });
+
 module.exports = mongoose.model('Booking', bookingSchema);

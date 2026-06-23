@@ -95,6 +95,10 @@ function validateCreatePayload(body) {
     result.seatLayout = { rows, seatsPerRow, vipRows, premiumRows };
   }
 
+  if (body.venueGates && Array.isArray(body.venueGates)) {
+    result.venueGates = body.venueGates;
+  }
+
   return result;
 }
 
