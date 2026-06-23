@@ -171,11 +171,30 @@ async function getAdminAnalytics() {
 }
 
 /**
+ * Fetch all tickets across all matches for admin overview.
+ */
+async function getAllTickets() {
+  return Ticket.find()
+    .populate('match', 'title teamA teamB matchDate status')
+    .populate('seat', 'seatLabel category price')
+    .populate('user', 'name email')
+    .populate('scannedBy', 'name')
+    .sort({ createdAt: -1 })
+    .limit(100);
+}
+
+/**
  * Fetch logs representing rejected ticket check-in attempts.
  */
 async function getFraudLogs() {
   return FraudLog.find()
-    .populate('ticket')
+    .populate({
+      path: 'ticket',
+      populate: [
+        { path: 'seat', select: 'seatLabel category price' },
+        { path: 'user', select: 'name' },
+      ],
+    })
     .populate('match')
     .populate('scannedBy', 'name email')
     .sort({ timestamp: -1 })
@@ -188,5 +207,6 @@ module.exports = {
   updateUser,
   deleteUser,
   getAdminAnalytics,
+  getAllTickets,
   getFraudLogs,
 };

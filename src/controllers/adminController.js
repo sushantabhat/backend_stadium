@@ -72,6 +72,15 @@ async function getFraudLogs(req, res, next) {
   }
 }
 
+async function getAllTickets(req, res, next) {
+  try {
+    const tickets = await adminService.getAllTickets();
+    res.status(200).json({ tickets });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getUsers,
   createUser,
@@ -79,4 +88,5 @@ module.exports = {
   deleteUser,
   getAnalytics,
   getFraudLogs,
+  getAllTickets,
 };
