@@ -3,6 +3,7 @@ const Match = require('../models/Match');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
 const { processRefundForBooking } = require('./refundService');
+const { createNotification } = require('./notificationService');
 const { SEAT_CATEGORIES } = require('../models/Seat');
 
 const GATE_RULES = [
@@ -420,10 +421,20 @@ async function cancelMatch(matchId) {
   const refunds = [];
   for (const booking of bookingsToCancel) {
     try {
+      await createNotification(booking.user, {
+        title: 'Match Cancelled',
+        message: `The match "${match.title}" has been cancelled. Your refund of Rs.${booking.totalAmount} is being processed.`,
+        type: 'match_cancelled',
+        data: { matchId: match._id, bookingId: booking._id, amount: booking.totalAmount },
+      });
+    } catch (err) {
+      console.error(`[CANCEL] Failed to send match_cancelled notification for booking ${booking._id}:`, err.message);
+    }
+    try {
       const refund = await processRefundForBooking(booking, 'match_cancelled');
       refunds.push(refund);
-    } catch {
-      // refund failure shouldn't block cancellation
+    } catch (err) {
+      console.error(`[CANCEL] Failed to process refund for booking ${booking._id}:`, err.message);
     }
   }
 

@@ -25,6 +25,20 @@ function init(httpServer) {
       console.log(`🔴 Socket ${socket.id} left match room: ${matchId}`);
     });
 
+    // Join user's personal notification room
+    socket.on('join_user', (userId) => {
+      const room = `user_${userId}`;
+      socket.join(room);
+      console.log(`🟢 Socket ${socket.id} joined user room: ${room}`);
+    });
+
+    // Leave user room
+    socket.on('leave_user', (userId) => {
+      const room = `user_${userId}`;
+      socket.leave(room);
+      console.log(`🔴 Socket ${socket.id} left user room: ${room}`);
+    });
+
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
     });
@@ -61,9 +75,20 @@ function emitAttendanceUpdate(matchId, attendanceData) {
   io.emit('attendance_update', { matchId, ...attendanceData });
 }
 
+/**
+ * Emit a new notification event to a specific user.
+ * @param {string} userId - The user's ObjectId string.
+ * @param {object} notification - The notification document object.
+ */
+function emitNewNotification(userId, notification) {
+  if (!io) return;
+  io.to(`user_${userId}`).emit('new_notification', notification);
+}
+
 module.exports = {
   init,
   getIO,
   emitSeatUpdate,
   emitAttendanceUpdate,
+  emitNewNotification,
 };

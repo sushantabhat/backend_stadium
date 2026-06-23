@@ -1,7 +1,17 @@
 const Notification = require('../models/Notification');
+const { emitNewNotification } = require('./socketService');
 
 async function createNotification(userId, { title, message, type = 'general', data = null }) {
-  return Notification.create({ user: userId, title, message, type, data });
+  const notification = await Notification.create({ user: userId, title, message, type, data });
+
+  try {
+    const notifObj = notification.toObject();
+    emitNewNotification(userId.toString(), notifObj);
+  } catch (err) {
+    console.error(`[SOCKET] Failed to emit notification for user ${userId}:`, err.message);
+  }
+
+  return notification;
 }
 
 async function getMyNotifications(userId) {
