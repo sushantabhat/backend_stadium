@@ -102,6 +102,14 @@ async function verifyTicket(staffId, ticketCode) {
     throw createHttpError('Ticket not found. Invalid QR code.', 404);
   }
 
+  if (existingTicket.status === 'cancelled') {
+    console.log(`[TicketVerify] CANCELLED code="${trimmedCode}"`);
+    throw createHttpError(
+      'This ticket was from a cancelled match. Please contact support.',
+      410
+    );
+  }
+
   if (existingTicket.status === 'used') {
     console.log(`[TicketVerify] ALREADY USED code="${trimmedCode}" usedAt=${existingTicket.usedAt}`);
     try {

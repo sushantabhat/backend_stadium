@@ -445,7 +445,7 @@ async function cancelMatch(matchId) {
 
   const ticketsResult = await Ticket.updateMany(
     { match: matchId, status: 'active' },
-    { status: 'used', usedAt: new Date() }
+    { status: 'cancelled' }
   );
 
   const seatsResult = await Seat.updateMany(
