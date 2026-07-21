@@ -46,6 +46,10 @@ function validateCreatePayload(body) {
     teamALogo: body.teamALogo?.trim() || '',
     teamBLogo: body.teamBLogo?.trim() || '',
     pricing: pricingEntries,
+    match_type: body.match_type?.trim() || 'League',
+    match_stage: body.match_stage?.trim() || 'League Stage',
+    cricket_format: body.cricket_format?.trim() || 'T20',
+    star_power_level: body.star_power_level?.trim() || 'None',
   };
 
   if (body.stadiumSections && Array.isArray(body.stadiumSections) && body.stadiumSections.length > 0) {

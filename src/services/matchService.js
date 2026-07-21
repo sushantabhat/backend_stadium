@@ -169,6 +169,10 @@ function formatMatch(match, seatStats) {
     imageUrl: match.imageUrl || '',
     teamALogo: match.teamALogo || '',
     teamBLogo: match.teamBLogo || '',
+    match_type: match.match_type,
+    match_stage: match.match_stage,
+    cricket_format: match.cricket_format,
+    star_power_level: match.star_power_level,
     status: match.status,
     pricing: pricingObj,
     stadiumSections: match.stadiumSections || [],
@@ -308,7 +312,7 @@ async function updateMatch(matchId, updates) {
     throw createHttpError('Match not found', 404);
   }
 
-  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status', 'imageUrl', 'teamALogo', 'teamBLogo'];
+  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status', 'imageUrl', 'teamALogo', 'teamBLogo', 'match_type', 'match_stage', 'cricket_format', 'star_power_level'];
   allowedFields.forEach((field) => {
     if (updates[field] !== undefined) {
       match[field] = updates[field];
