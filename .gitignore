@@ -12,6 +12,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ML Datasets (Too large for GitHub)
+ml/data/*.csv
+
 # caches and build output
 dist/
 build/
