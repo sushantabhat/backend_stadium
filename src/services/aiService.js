@@ -327,12 +327,7 @@ const cityCoordinates = {
  * predictAttendance Prediction
  * Spawns a child process to run the trained Python model.
  */
-async function predictAttendance(matchId) {
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw createHttpError('Match not found', 404);
-  }
-
+async function calculateMatchHypeAndWeather(match) {
   const matchDate = new Date(match.matchDate);
   
   // --- Calculate Expected Popularity ---
@@ -340,7 +335,6 @@ async function predictAttendance(matchId) {
   const mType = match.match_type || "League";
   const mStage = match.match_stage || "League Stage";
   const cFormat = match.cricket_format || "T20";
-  const sPower = match.star_power_level || "None";
 
   // 1. Base Score
   if (matchTypeBaseScores[mType]) {
@@ -376,7 +370,6 @@ async function predictAttendance(matchId) {
     const globalStars = match.global_stars_count || 0;
     const intStars = match.international_stars_count || 0;
     const localStars = match.local_stars_count || 0;
-    // Domestic matches get MASSIVE impact from stars
     starBoost = (globalStars * 3.0) + (intStars * 1.5) + (localStars * 0.5);
     expected_popularity += starBoost;
     console.log(`[AI Logic] Calculated Star Power Boost: +${starBoost} (Context: NPL)`);
@@ -418,15 +411,14 @@ async function predictAttendance(matchId) {
         const opponentDoc = match.teamA === 'Nepal' ? teamBDoc : teamADoc;
         const opponentRank = opponentDoc ? opponentDoc.globalRank : 99;
         
-        // Tiered Home Fanaticism: 
         if (opponentRank != null && opponentRank <= 5) {
-          expected_popularity += 5.0; // Powerhouse opponent -> Massive Overflow Hype!
+          expected_popularity += 5.0;
           console.log(`[AI Logic] HOME NATION FANATICISM (Tier 1): Nepal vs Powerhouse! +5.0 Boost applied.`);
         } else if (opponentRank != null && opponentRank <= 12) {
-          expected_popularity += 2.0; // Solid opponent -> Guaranteed Full House
+          expected_popularity += 2.0;
           console.log(`[AI Logic] HOME NATION FANATICISM (Tier 2): Nepal vs Major Team! +2.0 Boost applied.`);
         } else {
-          expected_popularity += 1.0; // Lower tier opponent -> Almost Full House
+          expected_popularity += 1.0;
           console.log(`[AI Logic] HOME NATION FANATICISM (Tier 3): Nepal vs Associate! +1.0 Boost applied.`);
         }
       }
@@ -447,15 +439,12 @@ async function predictAttendance(matchId) {
 
       if ((hasRohitA && hasSandeepB) || (hasSandeepA && hasRohitB)) {
         expected_popularity += 2.0;
-        console.log(`[AI Logic] PLAYER RIVALRY DETECTED: The National Captains' Clash (Rohit vs Sandeep)! +2.0 Boost applied.`);
+        console.log(`[AI Logic] PLAYER RIVALRY DETECTED: The National Captains' Clash! +2.0 Boost applied.`);
       }
     }
-
   } catch (err) {
     console.log('[AI Logic] Error fetching team/player logic:', err);
   }
-
-  // 8. Legacy Hardcoded Rivalries (for non-player driven ones)
 
   expected_popularity = Math.min(Math.floor(expected_popularity), 10);
 
@@ -484,13 +473,30 @@ async function predictAttendance(matchId) {
     console.error("[AI Weather] Failed to fetch live weather:", err.message);
   }
 
+  return {
+    expected_popularity,
+    max_temp,
+    rain_mm,
+    is_weekend: [0, 6].includes(matchDate.getDay()) ? 1 : 0,
+    is_holiday: 0
+  };
+}
+
+async function predictAttendance(matchId) {
+  const match = await Match.findById(matchId);
+  if (!match) {
+    throw createHttpError('Match not found', 404);
+  }
+
+  const { expected_popularity, max_temp, rain_mm, is_weekend, is_holiday } = await calculateMatchHypeAndWeather(match);
+
   const inputData = {
     stadium_capacity: match.venue_capacity || 15000,
-    expected_popularity: expected_popularity,
-    is_weekend: [0, 6].includes(matchDate.getDay()) ? 1 : 0,
-    is_holiday: 0, // Hardcoded for now unless you integrate a holiday API here
-    max_temp: max_temp,
-    rain_mm: rain_mm
+    expected_popularity,
+    is_weekend,
+    is_holiday,
+    max_temp,
+    rain_mm
   };
 
   const scriptPath = path.join(__dirname, '..', '..', 'ml', 'predict.py');
@@ -561,4 +567,5 @@ module.exports = {
   getSmartSeatRecommendations,
   getMatchRecommendations,
   predictAttendance,
+  calculateMatchHypeAndWeather,
 };

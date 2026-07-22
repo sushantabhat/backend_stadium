@@ -1,10 +1,8 @@
 const matchService = require('../services/matchService');
-
-function createHttpError(message, statusCode) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
+const aiService = require('../services/aiService');
+const flywheelService = require('../services/flywheelService');
+const createHttpError = require('http-errors');
+const Match = require('../models/Match');
 
 function parseMatchDate(value) {
   const date = new Date(value);
@@ -213,7 +211,22 @@ async function updateMatch(req, res, next) {
       updates.stadiumSections = validated;
     }
 
+    // Fetch the original match to see if the status is actually changing
+    const originalMatch = await Match.findById(req.params.id);
+    if (!originalMatch) {
+      throw createHttpError('Match not found', 404);
+    }
+    const wasCompleted = originalMatch.status === 'completed';
+
     const match = await matchService.updateMatch(req.params.id, updates);
+
+    // Trigger AI Data Flywheel if match just finished
+    if (match.status === 'completed' && !wasCompleted) {
+      // Run asynchronously in the background so it doesn't block the API response
+      flywheelService.processCompletedMatch(match._id).catch(err => {
+        console.error('[MatchController] Flywheel processing failed:', err);
+      });
+    }
 
     res.status(200).json({
       message: 'Match updated successfully',
