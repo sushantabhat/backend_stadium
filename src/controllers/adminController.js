@@ -123,6 +123,36 @@ async function getAllTickets(req, res, next) {
   }
 }
 
+async function getLockedSeats(req, res, next) {
+  try {
+    const seats = await adminService.getLockedSeats();
+    res.status(200).json({ seats });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function overrideSeat(req, res, next) {
+  try {
+    const { action } = req.body;
+    const seat = await adminService.overrideSeat(req.params.id, action);
+    res.status(200).json({ message: `Seat updated successfully to ${seat.status}`, seat });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function manualTicketEntry(req, res, next) {
+  try {
+    const { ticketCode } = req.body;
+    if (!ticketCode) return res.status(400).json({ message: 'Ticket code is required' });
+    const ticket = await adminService.manualTicketEntry(ticketCode, req.user.id);
+    res.status(200).json({ message: 'Ticket manually verified successfully', ticket });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getUsers,
   createUser,
@@ -135,4 +165,7 @@ module.exports = {
   resolveFraudLog,
   escalateFraudLog,
   getAllTickets,
+  getLockedSeats,
+  overrideSeat,
+  manualTicketEntry,
 };

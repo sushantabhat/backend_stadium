@@ -21,6 +21,11 @@ router.get('/fraud-logs/:id/attendance', adminController.getFraudLogAttendance);
 router.put('/fraud-logs/:id/resolve', adminController.resolveFraudLog);
 router.put('/fraud-logs/:id/escalate', adminController.escalateFraudLog);
 
+// --- Supervisor/Admin Override Routes ---
+router.get('/locked-seats', adminController.getLockedSeats);
+router.post('/seats/:id/override', adminController.overrideSeat);
+router.post('/tickets/manual-entry', adminController.manualTicketEntry);
+
 router.get('/venues', async (req, res) => {
   try {
     const venues = await Venue.find().sort({ name: 1 }).lean();

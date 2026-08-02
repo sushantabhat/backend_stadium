@@ -335,4 +335,85 @@ module.exports = {
   getAttendanceLogsForTicket,
   resolveFraudLog,
   escalateFraudLog,
+  getAllTickets,
+  getLockedSeats,
+  overrideSeat,
+  manualTicketEntry,
 };
+
+/**
+ * Supervisor/Admin functionality: Get all locked seats
+ */
+async function getLockedSeats() {
+  return Seat.find({ status: 'locked' })
+    .populate('match', 'title')
+    .populate('lockedBy', 'name')
+    .sort({ lockedUntil: -1 });
+}
+
+/**
+ * Supervisor/Admin functionality: Override a seat status
+ */
+async function overrideSeat(seatId, action) {
+  const seat = await Seat.findById(seatId);
+  if (!seat) {
+    const err = new Error('Seat not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (action === 'unlock') {
+    seat.status = 'available';
+    seat.lockedBy = null;
+    seat.lockedUntil = null;
+  } else if (action === 'maintenance') {
+    seat.status = 'maintenance';
+    seat.lockedBy = null;
+    seat.lockedUntil = null;
+  } else if (action === 'vip') {
+    seat.status = 'vip';
+    seat.lockedBy = null;
+    seat.lockedUntil = null;
+  } else {
+    const err = new Error('Invalid action');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  await seat.save();
+  return seat;
+}
+
+/**
+ * Supervisor/Admin functionality: Manual Ticket Entry
+ */
+async function manualTicketEntry(ticketCode, supervisorId) {
+  const ticket = await Ticket.findOne({ code: ticketCode });
+  if (!ticket) {
+    const err = new Error('Ticket not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (ticket.scanned) {
+    const err = new Error('Ticket has already been scanned');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  ticket.scanned = true;
+  ticket.scannedAt = new Date();
+  // Assume a dummy gate for manual entry if none provided, or supervisor desk
+  await ticket.save();
+
+  // Log attendance
+  await AttendanceLog.create({
+    ticket: ticket._id,
+    match: ticket.match,
+    gate: 'MANUAL_SUPERVISOR_ENTRY',
+    scannedBy: supervisorId,
+    status: 'success',
+  });
+
+  return ticket;
+}
