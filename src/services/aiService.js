@@ -321,6 +321,10 @@ const cityCoordinates = {
   'Chitwan': { lat: 27.5291, lon: 84.4552 },
   'Biratnagar': { lat: 26.4525, lon: 87.2718 },
   'Bhairahawa': { lat: 27.5065, lon: 83.4496 },
+  'Lumbini': { lat: 27.4840, lon: 83.2761 },
+  'Janakpur': { lat: 26.7288, lon: 85.9260 },
+  'Karnali': { lat: 28.5993, lon: 81.6241 },
+  'Dhangadhi': { lat: 28.6946, lon: 80.5621 },
 };
 
 /**
