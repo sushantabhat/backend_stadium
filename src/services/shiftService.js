@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const StaffShift = require('../models/StaffShift');
 const AttendanceLog = require('../models/AttendanceLog');
+const Match = require('../models/Match');
+const Venue = require('../models/Venue');
 
 async function getShifts(filter) {
   const q = {};
@@ -125,7 +127,23 @@ async function getGateStats(matchId) {
     recentMap[r._id] = r.count;
   }
 
-  const allGates = [...new Set([...logs.map(l => l._id), ...shifts.map(s => s.gate)])].filter(Boolean);
+  const match = await Match.findById(matchId);
+  let physicalGates = [];
+  if (match && match.venue) {
+    const venue = await Venue.findOne({ name: match.venue });
+    if (venue && venue.gates && venue.gates.length > 0) {
+      physicalGates = venue.gates;
+    } else {
+      // Fallback defaults if the venue hasn't had gates configured yet
+      physicalGates = ['Gate 1', 'Gate 2', 'Gate 3'];
+    }
+  }
+
+  const allGates = [...new Set([
+    ...physicalGates,
+    ...logs.map(l => l._id), 
+    ...shifts.map(s => s.gate)
+  ])].filter(Boolean);
 
   return allGates.map(gate => ({
     gate,
