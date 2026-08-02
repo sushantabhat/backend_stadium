@@ -330,123 +330,41 @@ const cityCoordinates = {
 async function calculateMatchHypeAndWeather(match) {
   const matchDate = new Date(match.matchDate);
   
-  // --- Calculate Expected Popularity ---
-  let expected_popularity = 5;
-  const mType = match.match_type || "League";
   const mStage = match.match_stage || "League Stage";
-  const cFormat = match.cricket_format || "T20";
+  
+  let teamATier = 2;
+  let teamBTier = 2;
+  let hasTeamRivalry = 0;
+  let isHomeMatch = 0;
+  let avgTicketPrice = 500;
+  let matchTime = matchDate.getHours() >= 16 ? "Day-Night" : "Day";
 
-  // 1. Base Score
-  if (matchTypeBaseScores[mType]) {
-    expected_popularity = matchTypeBaseScores[mType];
-  } else {
-    const scoreA = teamStats[match.teamA] || 5;
-    const scoreB = teamStats[match.teamB] || 5;
-    expected_popularity = (scoreA + scoreB) / 2;
-  }
-
-  // 1.5. Cricket Format Adjustment
-  if (cFormat === 'T20' || cFormat === 'T10') expected_popularity += 1;
-
-  // 2. Rivalry Boost
-  const isRivalry = rivalries.some(r => 
-    (r.includes(match.teamA) && r.includes(match.teamB))
-  );
-  if (isRivalry) expected_popularity += 2;
-
-  // 3. Match Stage Modifiers
-  const matchStageModifiers = {
-    'Finals': 3,
-    'Qualifier / Decider': 3,
-    'Semi-Finals': 2,
-    'Quarter-Finals': 1,
-    'League Stage': 0
-  };
-  expected_popularity += (matchStageModifiers[match.match_stage] || 0);
-
-  // 4. Granular Star Power (Context-Aware Gravity Formula)
-  let starBoost = 0;
-  if (match.match_type === 'NPL') {
-    const globalStars = match.global_stars_count || 0;
-    const intStars = match.international_stars_count || 0;
-    const localStars = match.local_stars_count || 0;
-    starBoost = (globalStars * 3.0) + (intStars * 1.5) + (localStars * 0.5);
-    expected_popularity += starBoost;
-    console.log(`[AI Logic] Calculated Star Power Boost: +${starBoost} (Context: NPL)`);
-  } else {
-    console.log(`[AI Logic] Ignored individual Star Power Steppers (Context: International)`);
-  }
-
-  // 5. Global Rank Power (ICC Math)
   try {
     const teamADoc = await Team.findOne({ name: match.teamA });
     const teamBDoc = await Team.findOne({ name: match.teamB });
-
-    const getRankBoost = (rank) => {
-      if (rank == null) return 0;
-      if (rank >= 1 && rank <= 5) return 4.5;
-      if (rank >= 6 && rank <= 12) return 3.0;
-      if (rank >= 13 && rank <= 20) return 1.5;
-      return 0;
-    };
-
-    let maxRankBoost = 0;
-    if (teamADoc) maxRankBoost = Math.max(maxRankBoost, getRankBoost(teamADoc.globalRank));
-    if (teamBDoc) maxRankBoost = Math.max(maxRankBoost, getRankBoost(teamBDoc.globalRank));
-
-    expected_popularity += maxRankBoost;
-    console.log(`[AI Logic] Applied ICC Rank Boost: +${maxRankBoost}`);
-
-    // 6. Home Advantage & National Fanaticism Engine
+    
+    if (teamADoc) teamATier = teamADoc.franchiseTier || 2;
+    if (teamBDoc) teamBTier = teamBDoc.franchiseTier || 2;
+    
+    const isRivalry = rivalries.some(r => 
+      (r.includes(match.teamA) && r.includes(match.teamB))
+    );
+    if (isRivalry) hasTeamRivalry = 1;
+    
     const venueRecord = await Venue.findOne({ name: match.venue });
     const matchCity = venueRecord?.location || 'Kathmandu';
-    
-    if (match.match_type === 'NPL' && teamADoc && teamBDoc) {
-      if (teamADoc.homeCity === matchCity || teamBDoc.homeCity === matchCity) {
-        expected_popularity += 1.5;
-        console.log(`[AI Logic] Home Advantage applied! Venue City: ${matchCity}`);
-      }
-    } else if (match.match_type === 'International') {
-      if (match.teamA === 'Nepal' || match.teamB === 'Nepal') {
-        const opponentDoc = match.teamA === 'Nepal' ? teamBDoc : teamADoc;
-        const opponentRank = opponentDoc ? opponentDoc.globalRank : 99;
-        
-        if (opponentRank != null && opponentRank <= 5) {
-          expected_popularity += 5.0;
-          console.log(`[AI Logic] HOME NATION FANATICISM (Tier 1): Nepal vs Powerhouse! +5.0 Boost applied.`);
-        } else if (opponentRank != null && opponentRank <= 12) {
-          expected_popularity += 2.0;
-          console.log(`[AI Logic] HOME NATION FANATICISM (Tier 2): Nepal vs Major Team! +2.0 Boost applied.`);
-        } else {
-          expected_popularity += 1.0;
-          console.log(`[AI Logic] HOME NATION FANATICISM (Tier 3): Nepal vs Associate! +1.0 Boost applied.`);
-        }
-      }
+    if ((teamADoc && teamADoc.homeCity === matchCity) || (teamBDoc && teamBDoc.homeCity === matchCity)) {
+      isHomeMatch = 1;
     }
 
-    // 7. Player-Driven Rivalry Engine (Roster Scan)
-    if (teamADoc && teamBDoc) {
-      const teamAPlayers = await Player.find({ currentTeam: teamADoc._id });
-      const teamBPlayers = await Player.find({ currentTeam: teamBDoc._id });
-
-      const teamANames = teamAPlayers.map(p => p.name);
-      const teamBNames = teamBPlayers.map(p => p.name);
-
-      const hasRohitA = teamANames.includes('Rohit Paudel');
-      const hasSandeepA = teamANames.includes('Sandeep Lamichhane');
-      const hasRohitB = teamBNames.includes('Rohit Paudel');
-      const hasSandeepB = teamBNames.includes('Sandeep Lamichhane');
-
-      if ((hasRohitA && hasSandeepB) || (hasSandeepA && hasRohitB)) {
-        expected_popularity += 2.0;
-        console.log(`[AI Logic] PLAYER RIVALRY DETECTED: The National Captains' Clash! +2.0 Boost applied.`);
-      }
+    if (match.pricing && match.pricing.size > 0) {
+      let sum = 0;
+      match.pricing.forEach((price) => sum += price);
+      avgTicketPrice = sum / match.pricing.size;
     }
   } catch (err) {
-    console.log('[AI Logic] Error fetching team/player logic:', err);
+    console.log('[AI Logic] Error fetching team logic:', err);
   }
-
-  expected_popularity = Math.min(Math.floor(expected_popularity), 10);
 
   // 5. Fetch Live Weather Data from Open-Meteo
   const venueRecord = await Venue.findOne({ name: match.venue });
@@ -474,7 +392,13 @@ async function calculateMatchHypeAndWeather(match) {
   }
 
   return {
-    expected_popularity,
+    teamATier,
+    teamBTier,
+    mStage,
+    hasTeamRivalry,
+    isHomeMatch,
+    matchTime,
+    avgTicketPrice,
     max_temp,
     rain_mm,
     is_weekend: [0, 6].includes(matchDate.getDay()) ? 1 : 0,
@@ -488,15 +412,21 @@ async function predictAttendance(matchId) {
     throw createHttpError('Match not found', 404);
   }
 
-  const { expected_popularity, max_temp, rain_mm, is_weekend, is_holiday } = await calculateMatchHypeAndWeather(match);
+  const features = await calculateMatchHypeAndWeather(match);
 
   const inputData = {
     stadium_capacity: match.venue_capacity || 15000,
-    expected_popularity,
-    is_weekend,
-    is_holiday,
-    max_temp,
-    rain_mm
+    team_a_tier: features.teamATier,
+    team_b_tier: features.teamBTier,
+    match_stage: features.mStage,
+    has_team_rivalry: features.hasTeamRivalry,
+    is_home_match: features.isHomeMatch,
+    match_time: features.matchTime,
+    average_ticket_price: features.avgTicketPrice,
+    is_weekend: features.is_weekend,
+    is_holiday: features.is_holiday,
+    max_temp: features.max_temp,
+    rain_mm: features.rain_mm
   };
 
   const scriptPath = path.join(__dirname, '..', '..', 'ml', 'predict.py');

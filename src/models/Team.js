@@ -7,9 +7,10 @@ const teamSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-  globalRank: {
+  franchiseTier: {
     type: Number,
-    default: null, // Null for unranked/domestic teams
+    enum: [1, 2, 3],
+    default: 2
   },
   homeCity: {
     type: String,

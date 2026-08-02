@@ -11,11 +11,11 @@ exports.getAllTeams = async (req, res, next) => {
 
 exports.createTeam = async (req, res, next) => {
   try {
-    const { name, shortName, logoUrl } = req.body;
+    const { name, shortName, logoUrl, franchiseTier, homeCity } = req.body;
     if (!name || !shortName) {
       return res.status(400).json({ message: 'Name and shortName are required.' });
     }
-    const team = await Team.create({ name, shortName, logoUrl });
+    const team = await Team.create({ name, shortName, logoUrl, franchiseTier, homeCity });
     res.status(201).json(team);
   } catch (error) {
     if (error.code === 11000) {

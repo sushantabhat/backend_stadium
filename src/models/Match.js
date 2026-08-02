@@ -59,10 +59,6 @@ const matchSchema = new mongoose.Schema(
       enum: ['upcoming', 'live', 'completed', 'cancelled'],
       default: 'upcoming',
     },
-    match_type: {
-      type: String,
-      default: 'NPL',
-    },
     match_stage: {
       type: String,
       default: 'League Stage',
@@ -70,18 +66,6 @@ const matchSchema = new mongoose.Schema(
     cricket_format: {
       type: String,
       default: 'T20',
-    },
-    global_stars_count: {
-      type: Number,
-      default: 0,
-    },
-    international_stars_count: {
-      type: Number,
-      default: 0,
-    },
-    local_stars_count: {
-      type: Number,
-      default: 0,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
