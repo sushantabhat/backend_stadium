@@ -430,10 +430,9 @@ async function predictAttendance(matchId) {
   };
 
   const scriptPath = path.join(__dirname, '..', '..', 'ml', 'predict.py');
-  const venvPython = path.join(__dirname, '..', '..', 'ml', 'venv', 'bin', 'python3');
 
   return new Promise((resolve, reject) => {
-    const pythonProcess = spawn(venvPython, [scriptPath, JSON.stringify(inputData)]);
+    const pythonProcess = spawn('python3', [scriptPath]);
     
     let result = '';
     let errorStr = '';
@@ -445,6 +444,10 @@ async function predictAttendance(matchId) {
     pythonProcess.stderr.on('data', (data) => {
       errorStr += data.toString();
     });
+
+    // Write input data to Python's stdin
+    pythonProcess.stdin.write(JSON.stringify(inputData));
+    pythonProcess.stdin.end();
 
     pythonProcess.on('close', (code) => {
       if (code !== 0) {
