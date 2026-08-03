@@ -36,8 +36,8 @@ function buildSeatDocuments(match) {
     for (const section of match.stadiumSections) {
       let rows = section.rows || [];
       if (!rows.length) {
-        const numRows = Math.ceil(section.totalSeats / 8);
-        rows = Array.from({ length: Math.max(numRows, 1) }, (_, i) => String.fromCharCode(65 + i));
+        const numRows = Math.ceil(section.totalSeats / 20); // default to 20 seats per row
+        rows = Array.from({ length: Math.max(numRows, 1) }, (_, i) => `R${i + 1}`);
       }
       const base = Math.floor(section.totalSeats / rows.length);
       const extra = section.totalSeats % rows.length;
@@ -68,7 +68,7 @@ function buildSeatDocuments(match) {
     const { rows, seatsPerRow, vipRows, premiumRows } = match.seatLayout;
 
     for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
-      const rowLabel = String.fromCharCode(65 + rowIndex);
+      const rowLabel = `R${rowIndex + 1}`;
       let category = 'silver';
 
       if (rowIndex < vipRows) {
@@ -135,6 +135,22 @@ async function getSeatStats(matchId) {
     },
   ]);
 
+  const sectionStats = await Seat.aggregate([
+    { $match: { match: objectId } },
+    {
+      $group: {
+        _id: '$sectionId',
+        count: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] },
+        },
+        booked: {
+          $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
+        },
+      },
+    },
+  ]);
+
   const result = stats[0] || {};
   const categoryMap = {};
   categoryStats.forEach((cs) => {
@@ -143,12 +159,22 @@ async function getSeatStats(matchId) {
     categoryMap[`${cs._id}_booked`] = cs.booked;
   });
 
+  const sectionMap = {};
+  sectionStats.forEach((ss) => {
+    if (ss._id) {
+      sectionMap[`section_${ss._id}_total`] = ss.count;
+      sectionMap[`section_${ss._id}_available`] = ss.available;
+      sectionMap[`section_${ss._id}_booked`] = ss.booked;
+    }
+  });
+
   return {
     total: result.total || 0,
     available: result.available || 0,
     locked: result.locked || 0,
     booked: result.booked || 0,
     ...categoryMap,
+    ...sectionMap,
   };
 }
 
