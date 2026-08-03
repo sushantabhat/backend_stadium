@@ -133,10 +133,10 @@ async function getGateStats(matchId) {
     const venue = await Venue.findOne({ name: match.venue });
     if (venue && venue.gates && venue.gates.length > 0) {
       physicalGates = venue.gates;
-    } else {
-      // Fallback defaults if the venue hasn't had gates configured yet
-      physicalGates = ['Gate 1', 'Gate 2', 'Gate 3'];
     }
+  }
+  if (physicalGates.length === 0) {
+    physicalGates = ['Gate A — Main', 'Gate B — North', 'Gate C — South', 'Gate D — VIP', 'Gate E — Staff'];
   }
 
   const allGates = [...new Set([
