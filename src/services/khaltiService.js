@@ -1,7 +1,7 @@
 const KHALTI_CONFIG = {
   secretKey: process.env.KHALTI_SECRET_KEY || '',
-  initiateUrl: process.env.KHALTI_INITIATE_URL || 'https://dev.khalti.com/api/v2/epayment/initiate/',
-  lookupUrl: process.env.KHALTI_LOOKUP_URL || 'https://dev.khalti.com/api/v2/epayment/lookup/',
+  initiateUrl: process.env.KHALTI_INITIATE_URL || 'https://a.khalti.com/api/v2/epayment/initiate/',
+  lookupUrl: process.env.KHALTI_LOOKUP_URL || 'https://a.khalti.com/api/v2/epayment/lookup/',
 };
 
 function generateOrderId(matchId, seatIds) {
@@ -35,7 +35,7 @@ async function initiatePayment({ amount, matchId, seatIds, customerInfo }) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `key ${KHALTI_CONFIG.secretKey}`,
+      Authorization: `Key ${KHALTI_CONFIG.secretKey}`,
     },
     body: JSON.stringify(body),
   });
@@ -59,7 +59,7 @@ async function lookupPayment(pidx) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `key ${KHALTI_CONFIG.secretKey}`,
+      Authorization: `Key ${KHALTI_CONFIG.secretKey}`,
     },
     body: JSON.stringify({ pidx }),
   });
