@@ -17,16 +17,14 @@ function createHttpError(message, statusCode) {
 
 // --- Automated Popularity Lookups ---
 const teamStats = {
-  "Kathmandu Kings XI": 8,
-  "Lalitpur Patriots": 7,
-  "Bhairahawa Gladiators": 6,
-  "Chitwan Tigers": 5,
-  "Pokhara Rhinos": 5,
-  "Biratnagar Warriors": 4,
-  "Nepal Army Club": 7,
-  "Machhindra FC": 8,
-  "Manang Marshyangdi Club": 8,
-  "Three Star Club": 6
+  "Kathmandu Gurkhas": 8,
+  "Chitwan Rhinos": 7,
+  "Janakpur Bolts": 8,
+  "Biratnagar Kings": 6,
+  "Lumbini Lions": 5,
+  "Pokhara Avengers": 5,
+  "Sudurpaschim Royals": 4,
+  "Karnali Yaks": 4,
 };
 
 const rivalries = [
@@ -58,135 +56,7 @@ const matchStageModifiers = {
   "Decider": 3
 };
 
-/**
- * AI Dynamic Pricing Suggester (Enhanced)
- * 
- * Uses multi-factor analysis:
- * - Occupancy rate and hold rate
- * - Time before match
- * - Sales velocity
- * - Day of week patterns
- * 
- * Architecture: ML-ready with feature extraction and prediction engine
- */
-async function getDynamicPricingSuggestions(matchId) {
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw createHttpError('Match not found', 404);
-  }
 
-  const totalSeats = await Seat.countDocuments({ match: matchId });
-  const bookedSeats = await Seat.countDocuments({ match: matchId, status: 'booked' });
-  const lockedSeats = await Seat.countDocuments({ match: matchId, status: 'locked' });
-
-  const occupancyRate = totalSeats > 0 ? bookedSeats / totalSeats : 0;
-  const holdRate = totalSeats > 0 ? lockedSeats / totalSeats : 0;
-  const activityMetric = occupancyRate + holdRate * 0.5;
-
-  let multiplier = 1.0;
-  let demandLevel = 'Low';
-
-  if (activityMetric >= 0.8) {
-    multiplier = 1.40;
-    demandLevel = 'Critical';
-  } else if (activityMetric >= 0.5) {
-    multiplier = 1.25;
-    demandLevel = 'High';
-  } else if (activityMetric >= 0.2) {
-    multiplier = 1.10;
-    demandLevel = 'Moderate';
-  }
-
-  // Time factor
-  const hoursUntilMatch = (new Date(match.matchDate) - new Date()) / (1000 * 60 * 60);
-  let timeMultiplier = 1.0;
-  if (hoursUntilMatch <= 2) timeMultiplier = 1.30;
-  else if (hoursUntilMatch <= 24) timeMultiplier = 1.20;
-  else if (hoursUntilMatch <= 72) timeMultiplier = 1.10;
-  else if (hoursUntilMatch <= 168) timeMultiplier = 1.05;
-
-  const finalMultiplier = Math.round(multiplier * timeMultiplier * 100) / 100;
-
-  const suggestedPricing = {};
-  const pricingObj = match.pricing instanceof Map
-    ? Object.fromEntries(match.pricing)
-    : match.pricing || {};
-  for (const [category, basePrice] of Object.entries(pricingObj)) {
-    suggestedPricing[category] = Math.round(basePrice * finalMultiplier);
-  }
-
-  return {
-    matchId,
-    title: match.title,
-    currentPricing: pricingObj,
-    suggestedPricing,
-    occupancyRate: (occupancyRate * 100).toFixed(1),
-    holdRate: (holdRate * 100).toFixed(1),
-    multiplier: finalMultiplier,
-    demandLevel,
-    factors: {
-      demandLevel,
-      urgency: hoursUntilMatch <= 24 ? 'Same day' : hoursUntilMatch <= 168 ? 'This week' : 'Early bird',
-      dayFactor: [0, 6].includes(new Date(match.matchDate).getDay()) ? 'Weekend premium' : 'Weekday',
-    },
-    confidence: 0.8,
-  };
-}
-
-/**
- * AI Smart Seat Recommendation (Enhanced)
- * 
- * Uses multi-factor analysis:
- * - Center proximity
- * - Row preference (front rows)
- * - User's category preferences
- * - Price value scoring
- * - Group potential
- * 
- * Architecture: ML-ready with feature extraction and prediction engine
- */
-async function getSmartSeatRecommendations(matchId, category, count = 2) {
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw createHttpError('Match not found', 404);
-  }
-
-  const seatLayout = match.seatLayout || {};
-  const seatsPerRow = seatLayout.seatsPerRow || 20;
-  const centerCol = Math.ceil(seatsPerRow / 2);
-
-  // Retrieve available seats in category
-  const availableSeats = await Seat.find({
-    match: matchId,
-    category,
-    status: 'available',
-  });
-
-  if (availableSeats.length === 0) {
-    return [];
-  }
-
-  // Sort: closest row first, then closest to center column
-  const sortedRecommendations = availableSeats.sort((a, b) => {
-    if (a.row !== b.row) {
-      return a.row.localeCompare(b.row);
-    }
-    const distA = Math.abs(a.number - centerCol);
-    const distB = Math.abs(b.number - centerCol);
-    return distA - distB;
-  });
-
-  return sortedRecommendations.slice(0, Number(count)).map(seat => ({
-    _id: seat._id,
-    seatLabel: seat.seatLabel,
-    row: seat.row,
-    number: seat.number,
-    category: seat.category,
-    price: seat.price,
-    score: (1 / (Math.abs(seat.number - centerCol) + 1)) * (1 / (seat.row.charCodeAt(0) - 64)),
-    explanation: Math.abs(seat.number - centerCol) <= 2 ? 'Excellent center view' : 'Good seat selection',
-  }));
-}
 
 /**
  * AI Match Recommendation (Enhanced)
@@ -362,9 +232,19 @@ async function calculateMatchHypeAndWeather(match) {
     }
 
     if (match.pricing && match.pricing.size > 0) {
-      let sum = 0;
-      match.pricing.forEach((price) => sum += price);
-      avgTicketPrice = sum / match.pricing.size;
+      const pricingObj = match.pricing instanceof Map
+        ? Object.fromEntries(match.pricing)
+        : match.pricing || {};
+      const sections = match.stadiumSections || [];
+      let totalSeats = 0;
+      let weightedSum = 0;
+      for (const section of sections) {
+        const price = pricingObj[section.category] || section.pricePerTicket || 0;
+        const seats = section.totalSeats || 0;
+        weightedSum += price * seats;
+        totalSeats += seats;
+      }
+      avgTicketPrice = totalSeats > 0 ? Math.round(weightedSum / totalSeats) : 500;
     }
   } catch (err) {
     console.log('[AI Logic] Error fetching team logic:', err);
@@ -419,7 +299,7 @@ async function predictAttendance(matchId) {
   const features = await calculateMatchHypeAndWeather(match);
 
   const inputData = {
-    stadium_capacity: match.venue_capacity || 15000,
+    stadium_capacity: match.totalSeats || 15000,
     team_a_tier: features.teamATier,
     team_b_tier: features.teamBTier,
     match_stage: features.mStage,
@@ -433,75 +313,19 @@ async function predictAttendance(matchId) {
     rain_mm: features.rain_mm
   };
 
-  const scriptPath = path.join(__dirname, '..', '..', 'ml', 'predict.py');
+  console.log(`[AI Prediction] Match: ${match.teamA} vs ${match.teamB} | Stage: ${inputData.match_stage} | Capacity: ${inputData.stadium_capacity} | Tiers: T${inputData.team_a_tier} v T${inputData.team_b_tier} | Rivalry: ${inputData.has_team_rivalry} | Home: ${inputData.is_home_match}`);
 
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', [scriptPath]);
-    
-    let result = '';
-    let errorStr = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      result += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorStr += data.toString();
-    });
-
-    // Write input data to Python's stdin
-    pythonProcess.stdin.write(JSON.stringify(inputData));
-    pythonProcess.stdin.end();
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`Python script failed: ${errorStr}`));
-      }
-      try {
-        const parsed = JSON.parse(result);
-        if (parsed.error) {
-          return reject(new Error(parsed.error));
-        }
-        let rawPrediction = parsed.predicted_attendance;
-        
-        // Hype Overflow Engine: South Asian crowds jump fences for massive games!
-        if (inputData.expected_popularity >= 9) {
-          rawPrediction = Math.floor(rawPrediction * 1.4); // 40% hype multiplier!
-        }
-
-        let realisticCap = 15000;
-        if (inputData.match_type === 'International') realisticCap = 55000;
-        else if (inputData.match_type === 'NPL') realisticCap = 25000;
-        else if (inputData.match_type === 'Friendly') realisticCap = 12000;
-
-        // Allow up to 15% overflow (people standing in aisles, hills, etc.) before strict capping
-        const absoluteMaxOverflow = Math.floor(realisticCap * 1.15);
-
-        if (rawPrediction > realisticCap) {
-          const excess = rawPrediction - realisticCap;
-          // Apply a logarithmic penalty to excess audience
-          rawPrediction = realisticCap + Math.floor(Math.log10(Math.max(1, excess)) * (realisticCap * 0.15));
-        }
-
-        if (rawPrediction > absoluteMaxOverflow) {
-          rawPrediction = absoluteMaxOverflow;
-        }
-
-        resolve({
-          matchId,
-          prediction: rawPrediction,
-          factors: inputData
-        });
-      } catch (err) {
-        reject(new Error(`Failed to parse python output: ${result}`));
-      }
-    });
+  return resolve({
+    matchId,
+    prediction: 0,
+    factors: inputData,
+    features: {},
+    timestamp: new Date(),
+    message: "AI Model stripped. Awaiting brand new implementation."
   });
 }
 
 module.exports = {
-  getDynamicPricingSuggestions,
-  getSmartSeatRecommendations,
   getMatchRecommendations,
   predictAttendance,
   calculateMatchHypeAndWeather,

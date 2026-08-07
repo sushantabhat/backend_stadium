@@ -2,6 +2,16 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const Venue = require('./src/models/Venue');
 const User = require('./src/models/User');
+const { STADIUM_SECTIONS } = require('./scripts/stadiumLayout');
+
+const VENUE_PRICING = {
+  platinum: 1000,
+  gold: 500,
+  silver: 400,
+  bronze: 300,
+  general: 200,
+  supporters: 100,
+};
 
 const NPL_VENUES = [
   { name: 'Biratnagar Stadium', location: 'Biratnagar' },
@@ -13,6 +23,21 @@ const NPL_VENUES = [
   { name: 'Pokhara Rangasala', location: 'Pokhara' },
   { name: 'Dhangadhi Fapla Ground', location: 'Dhangadhi' }
 ];
+
+function getSectionsWithPricing() {
+  return STADIUM_SECTIONS.map((s) => ({
+    sectionId: s.sectionId,
+    category: s.category,
+    label: s.label,
+    color: s.color,
+    polygon: s.polygon,
+    labelX: s.labelX,
+    labelY: s.labelY,
+    rows: s.rows,
+    totalSeats: s.totalSeats,
+    pricePerTicket: VENUE_PRICING[s.category] || 200,
+  }));
+}
 
 async function seedVenues() {
   try {
@@ -28,19 +53,24 @@ async function seedVenues() {
 
     for (const venueData of NPL_VENUES) {
       const existing = await Venue.findOne({ location: venueData.location });
-      if (!existing) {
+      if (existing) {
+        existing.pricing = VENUE_PRICING;
+        existing.stadiumSections = getSectionsWithPricing();
+        await existing.save();
+        console.log(`Updated: ${existing.name} (${existing.stadiumSections.length} sections)`);
+      } else {
         await Venue.create({
           name: venueData.name,
           location: venueData.location,
+          pricing: VENUE_PRICING,
+          stadiumSections: getSectionsWithPricing(),
           createdBy: adminUser._id
         });
-        console.log(`Created venue for ${venueData.location}: ${venueData.name}`);
-      } else {
-        console.log(`Venue for ${venueData.location} already exists.`);
+        console.log(`Created: ${venueData.name} (${STADIUM_SECTIONS.length} sections)`);
       }
     }
     
-    console.log('Successfully seeded NPL home venues.');
+    console.log('Done — all venues updated with correct sections and pricing.');
     process.exit(0);
   } catch (error) {
     console.error('Error seeding venues:', error);

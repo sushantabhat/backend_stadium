@@ -177,11 +177,17 @@ async function updateMatch(req, res, next) {
 
     if (updates.stadiumSections) {
       const validated = [];
+      const sectionIds = new Set();
       for (let i = 0; i < updates.stadiumSections.length; i++) {
         const s = updates.stadiumSections[i];
         if (!s.sectionId || !String(s.sectionId).trim()) {
           throw createHttpError(`stadiumSections[${i}].sectionId is required`, 400);
         }
+        const trimmedId = String(s.sectionId).trim();
+        if (sectionIds.has(trimmedId)) {
+          throw createHttpError(`stadiumSections[${i}].sectionId "${trimmedId}" is duplicated — each section must have a unique ID`, 400);
+        }
+        sectionIds.add(trimmedId);
         if (!s.category) {
           throw createHttpError(`stadiumSections[${i}].category is required`, 400);
         }

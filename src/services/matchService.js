@@ -249,7 +249,13 @@ async function createMatch(adminId, payload) {
 
   const seatDocuments = buildSeatDocuments(match);
   if (seatDocuments.length > 0) {
-    await Seat.insertMany(seatDocuments);
+    const seen = new Set();
+    const unique = seatDocuments.filter((s) => {
+      if (seen.has(s.seatLabel)) return false;
+      seen.add(s.seatLabel);
+      return true;
+    });
+    await Seat.insertMany(unique, { ordered: false }).catch(() => {});
   }
 
   const seatStats = await getSeatStats(match._id);
@@ -261,7 +267,10 @@ async function listMatches({ includeAll = false } = {}) {
     ? {}
     : { status: { $in: ['upcoming', 'live'] } };
 
-  const matches = await Match.find(filter).sort({ matchDate: 1 }).lean();
+  const matches = await Match.find(filter)
+    .populate('venue', 'name location')
+    .sort({ matchDate: 1 })
+    .lean();
 
   const formattedMatches = await Promise.all(
     matches.map(async (match) => {
@@ -277,7 +286,9 @@ async function getMatchById(matchId) {
   if (!matchId || !mongoose.Types.ObjectId.isValid(matchId)) {
     throw createHttpError('Invalid match ID', 400);
   }
-  const match = await Match.findById(matchId).populate('createdBy', 'name email');
+  const match = await Match.findById(matchId)
+    .populate('createdBy', 'name email')
+    .populate('venue', 'name location');
 
   if (!match) {
     throw createHttpError('Match not found', 404);
@@ -389,7 +400,13 @@ async function updateMatch(matchId, updates) {
     await Seat.deleteMany({ match: matchId });
     const seatDocuments = buildSeatDocuments(match);
     if (seatDocuments.length > 0) {
-      await Seat.insertMany(seatDocuments);
+      const seen = new Set();
+      const unique = seatDocuments.filter((s) => {
+        if (seen.has(s.seatLabel)) return false;
+        seen.add(s.seatLabel);
+        return true;
+      });
+      await Seat.insertMany(unique, { ordered: false }).catch(() => {});
     }
     seatsRegenerated = true;
   } else if (updates.seatLayout) {
@@ -424,14 +441,25 @@ async function updateMatch(matchId, updates) {
     await Seat.deleteMany({ match: matchId });
     const seatDocuments = buildSeatDocuments(match);
     if (seatDocuments.length > 0) {
-      await Seat.insertMany(seatDocuments);
+      const seen = new Set();
+      const unique = seatDocuments.filter((s) => {
+        if (seen.has(s.seatLabel)) return false;
+        seen.add(s.seatLabel);
+        return true;
+      });
+      await Seat.insertMany(unique, { ordered: false }).catch(() => {});
     }
     seatsRegenerated = true;
   }
 
   await match.save();
 
-  const seatStats = await getSeatStats(match._id);
+  let seatStats = {};
+  try {
+    seatStats = await getSeatStats(match._id);
+  } catch (statsErr) {
+    console.error('[updateMatch] getSeatStats failed (match already saved):', statsErr.message);
+  }
   return { ...formatMatch(match, seatStats), seatsRegenerated };
 }
 
