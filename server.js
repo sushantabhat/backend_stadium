@@ -21,6 +21,7 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const uploadRoutes = require('./src/routes/uploadRoutes');
 const shiftRoutes = require('./src/routes/shiftRoutes');
 const teamRoutes = require('./src/routes/teamRoutes');
+const incidentRoutes = require('./src/routes/incidentRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
 
@@ -49,6 +50,7 @@ app.use('/api/notifications', notificationRoutes);
   app.use('/api/upload', uploadRoutes);
   app.use('/api/shifts', shiftRoutes);
   app.use('/api/teams', teamRoutes);
+  app.use('/api/incidents', incidentRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Smart Stadium backend is running' });
