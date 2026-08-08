@@ -313,8 +313,8 @@ async function predictAttendance(matchId) {
 
   return new Promise((resolve, reject) => {
     // Determine path to the python script and venv
-    const pythonScript = path.join(__dirname, '../../../ml/predict.py');
-    const venvPython = path.join(__dirname, '../../../ml/venv/bin/python');
+    const pythonScript = path.join(__dirname, '../../ml/predict.py');
+    const venvPython = path.join(__dirname, '../../ml/venv/bin/python');
     
     // Spawn python process
     const pythonProcess = spawn(venvPython, [pythonScript]);
@@ -326,6 +326,17 @@ async function predictAttendance(matchId) {
     
     pythonProcess.stderr.on('data', (data) => {
       console.error('[AI Predict Error]', data.toString());
+    });
+
+    pythonProcess.on('error', (err) => {
+      console.error('[AI Predict Process Error]', err.message);
+      // Don't crash the server, just return the fallback
+      resolve({
+        matchId,
+        prediction: Math.round(inputData.capacity * 0.5), // Fallback
+        error: 'Prediction script failed to spawn',
+        factors: inputData
+      });
     });
 
     pythonProcess.on('close', (code) => {
