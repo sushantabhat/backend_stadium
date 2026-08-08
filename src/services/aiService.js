@@ -297,31 +297,71 @@ async function predictAttendance(matchId) {
   }
 
   const features = await calculateMatchHypeAndWeather(match);
+  const matchDate = new Date(match.matchDate);
 
   const inputData = {
-    stadium_capacity: match.totalSeats || 15000,
-    team_a_tier: features.teamATier,
-    team_b_tier: features.teamBTier,
-    match_stage: features.mStage,
-    has_team_rivalry: features.hasTeamRivalry,
-    is_home_match: features.isHomeMatch,
-    match_time: features.matchTime,
-    average_ticket_price: features.avgTicketPrice,
-    is_weekend: features.is_weekend,
-    is_holiday: features.is_holiday,
-    max_temp: features.max_temp,
-    rain_mm: features.rain_mm
+    home_tier: features.teamATier,
+    away_tier: features.teamBTier,
+    capacity: match.totalSeats || 15000,
+    temperature: features.max_temp,
+    rainfall: features.rain_mm,
+    month: matchDate.getMonth() + 1,
+    day_of_week: matchDate.getDay()
   };
 
-  console.log(`[AI Prediction] Match: ${match.teamA} vs ${match.teamB} | Stage: ${inputData.match_stage} | Capacity: ${inputData.stadium_capacity} | Tiers: T${inputData.team_a_tier} v T${inputData.team_b_tier} | Rivalry: ${inputData.has_team_rivalry} | Home: ${inputData.is_home_match}`);
+  console.log(`[AI Prediction] Request: ${match.teamA}(T${inputData.home_tier}) vs ${match.teamB}(T${inputData.away_tier}) | Cap: ${inputData.capacity} | Temp: ${inputData.temperature}`);
 
-  return resolve({
-    matchId,
-    prediction: 0,
-    factors: inputData,
-    features: {},
-    timestamp: new Date(),
-    message: "AI Model stripped. Awaiting brand new implementation."
+  return new Promise((resolve, reject) => {
+    // Determine path to the python script and venv
+    const pythonScript = path.join(__dirname, '../../../ml/predict.py');
+    const venvPython = path.join(__dirname, '../../../ml/venv/bin/python');
+    
+    // Spawn python process
+    const pythonProcess = spawn(venvPython, [pythonScript]);
+
+    let dataString = '';
+    pythonProcess.stdout.on('data', (data) => {
+      dataString += data.toString();
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      console.error('[AI Predict Error]', data.toString());
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        return resolve({
+          matchId,
+          prediction: Math.round(inputData.capacity * 0.5), // Fallback
+          error: 'Prediction script failed',
+          factors: inputData
+        });
+      }
+      try {
+        const result = JSON.parse(dataString);
+        if (result.error) throw new Error(result.error);
+        
+        resolve({
+          matchId,
+          prediction: result.attendance,
+          fill_rate: result.fill_rate,
+          factors: inputData,
+          timestamp: new Date()
+        });
+      } catch (err) {
+        console.error('Failed to parse prediction result:', err);
+        resolve({
+          matchId,
+          prediction: Math.round(inputData.capacity * 0.5), // Fallback
+          error: err.message,
+          factors: inputData
+        });
+      }
+    });
+
+    // Send features to python script via stdin
+    pythonProcess.stdin.write(JSON.stringify(inputData));
+    pythonProcess.stdin.end();
   });
 }
 
