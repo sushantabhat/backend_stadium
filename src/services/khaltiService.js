@@ -9,12 +9,12 @@ function generateOrderId(matchId, seatIds) {
 }
 
 async function initiatePayment({ amount, matchId, seatIds, customerInfo }) {
-  const purchaseOrderId = generateOrderId(matchId, seatIds);
+  const purchaseOrderId = generateOrderId(matchId, seatIds) + '-' + Date.now();
 
   const body = {
     return_url: 'https://www.example.com/khalti/success',
     website_url: 'https://www.example.com',
-    amount: String(Math.round(amount * 100)),
+    amount: Math.round(amount * 100),
     purchase_order_id: purchaseOrderId,
     purchase_order_name: 'Stadium Ticket',
     customer_info: {
