@@ -25,6 +25,7 @@ const teamRoutes = require('./src/routes/teamRoutes');
 const incidentRoutes = require('./src/routes/incidentRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
+const { startLockExpirySweep } = require('./src/services/bookingService');
 
 const app = express();
 const port = Number(process.env.PORT || 5001);
@@ -84,6 +85,7 @@ async function startServer() {
 
     const server = http.createServer(app);
     socketService.init(server);
+    startLockExpirySweep();
 
     server.listen(port, '0.0.0.0', () => {
       console.log(`📡 Server is live and listening on port ${port} (Socket.io enabled)`);

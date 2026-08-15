@@ -81,9 +81,19 @@ async function lockSeats(userId, matchId, seatIds) {
   // Lock seats
   const updatedSeats = [];
   for (const seat of seats) {
+    const alreadyLockedByUser =
+      seat.status === 'locked' &&
+      seat.lockedBy?.toString() === userId &&
+      seat.lockedUntil &&
+      seat.lockedUntil > now;
+
     seat.status = 'locked';
     seat.lockedBy = userId;
-    seat.lockedUntil = lockedUntil;
+    // Do NOT refresh the timer if the same user already holds a valid lock —
+    // otherwise re-locking could hold a seat past the 5-minute window.
+    if (!alreadyLockedByUser) {
+      seat.lockedUntil = lockedUntil;
+    }
     await seat.save();
 
     updatedSeats.push(seat);
@@ -96,7 +106,7 @@ async function lockSeats(userId, matchId, seatIds) {
       price: pricing[seat.category] ?? seat.price,
       status: 'locked',
       lockedBy: userId,
-      lockedUntil: lockedUntil,
+      lockedUntil: seat.lockedUntil,
     });
   }
 
@@ -141,6 +151,49 @@ async function unlockSeats(userId, matchId, seatIds) {
   }
 
   return updatedSeats;
+}
+
+/**
+ * Release all expired seat locks (background sweep).
+ */
+async function releaseExpiredLocks() {
+  const now = new Date();
+  const expired = await Seat.find({
+    status: 'locked',
+    lockedUntil: { $lt: now },
+  });
+
+  for (const seat of expired) {
+    seat.status = 'available';
+    seat.lockedBy = null;
+    seat.lockedUntil = null;
+    await seat.save();
+
+    socketService.emitSeatUpdate(seat.match, {
+      id: seat._id,
+      seatLabel: seat.seatLabel,
+      category: seat.category,
+      price: seat.price,
+      status: 'available',
+      lockedBy: null,
+      lockedUntil: null,
+    });
+  }
+
+  if (expired.length > 0) {
+    console.log(`🔓 Released ${expired.length} expired seat lock(s)`);
+  }
+
+  return expired.length;
+}
+
+function startLockExpirySweep(intervalMs = 30 * 1000) {
+  setInterval(() => {
+    releaseExpiredLocks().catch((err) => {
+      console.error('Lock expiry sweep failed:', err.message);
+    });
+  }, intervalMs);
+  console.log(`🔓 Lock expiry sweeper started (every ${intervalMs / 1000}s)`);
 }
 
 /**
@@ -290,4 +343,6 @@ module.exports = {
   unlockSeats,
   confirmBooking,
   getMyBookings,
+  releaseExpiredLocks,
+  startLockExpirySweep,
 };
