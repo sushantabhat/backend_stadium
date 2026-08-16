@@ -1,11 +1,23 @@
 const mongoose = require('mongoose');
 
+const SEAT_CATEGORIES = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
+
 const seatSchema = new mongoose.Schema(
   {
     match: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Match',
       required: true,
+    },
+    sectionId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    gate: {
+      type: String,
+      trim: true,
+      default: '',
     },
     seatLabel: {
       type: String,
@@ -24,7 +36,7 @@ const seatSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['vip', 'premium', 'general'],
+      enum: SEAT_CATEGORIES,
       required: true,
     },
     price: {
@@ -34,7 +46,7 @@ const seatSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['available', 'locked', 'booked'],
+      enum: ['available', 'locked', 'booked', 'maintenance', 'vip'],
       default: 'available',
     },
     lockedBy: {
@@ -53,5 +65,7 @@ const seatSchema = new mongoose.Schema(
 seatSchema.index({ match: 1, seatLabel: 1 }, { unique: true });
 seatSchema.index({ match: 1, status: 1 });
 seatSchema.index({ match: 1, category: 1 });
+seatSchema.index({ match: 1, sectionId: 1 });
 
 module.exports = mongoose.model('Seat', seatSchema);
+module.exports.SEAT_CATEGORIES = SEAT_CATEGORIES;

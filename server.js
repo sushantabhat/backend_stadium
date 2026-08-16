@@ -3,19 +3,29 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+
+const envResult = require('dotenv').config({
+  path: path.join(__dirname, '.env'),
+  override: true,
+});
+
 const authRoutes = require('./src/routes/authRoutes');
 const matchRoutes = require('./src/routes/matchRoutes');
 const bookingRoutes = require('./src/routes/bookingRoutes');
 const ticketRoutes = require('./src/routes/ticketRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
+const { khaltiPaymentRoutes } = require('./src/routes/khaltiPaymentRoutes');
+const esewaPaymentRoutes = require('./src/routes/esewaPaymentRoutes');
+const { mockCardPaymentRoutes } = require('./src/routes/mockCardPaymentRoutes');
+const notificationRoutes = require('./src/routes/notificationRoutes');
+const uploadRoutes = require('./src/routes/uploadRoutes');
+const shiftRoutes = require('./src/routes/shiftRoutes');
+const teamRoutes = require('./src/routes/teamRoutes');
+const incidentRoutes = require('./src/routes/incidentRoutes');
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const socketService = require('./src/services/socketService');
-
-const envResult = require('dotenv').config({
-  path: path.join(__dirname, '.env'),
-  override: true,
-});
+const { startLockExpirySweep } = require('./src/services/bookingService');
 
 const app = express();
 const port = Number(process.env.PORT || 5001);
@@ -23,8 +33,15 @@ const mongoUri = envResult.parsed?.MONGO_URI || process.env.MONGO_URI;
 
 // Middleware
 app.use(cors());
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -33,6 +50,14 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payments/khalti', khaltiPaymentRoutes);
+app.use('/api/payments/esewa', esewaPaymentRoutes);
+app.use('/api/payments/card', mockCardPaymentRoutes);
+app.use('/api/notifications', notificationRoutes);
+  app.use('/api/upload', uploadRoutes);
+  app.use('/api/shifts', shiftRoutes);
+  app.use('/api/teams', teamRoutes);
+  app.use('/api/incidents', incidentRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Smart Stadium backend is running' });
@@ -60,6 +85,7 @@ async function startServer() {
 
     const server = http.createServer(app);
     socketService.init(server);
+    startLockExpirySweep();
 
     server.listen(port, '0.0.0.0', () => {
       console.log(`📡 Server is live and listening on port ${port} (Socket.io enabled)`);

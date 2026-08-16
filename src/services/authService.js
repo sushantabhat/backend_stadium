@@ -74,8 +74,35 @@ async function getUserProfile(userId) {
   return user.toPublicJSON();
 }
 
+async function updateUserProfile(userId, { name }) {
+  if (!name || !name.trim()) {
+    const error = new Error('Name is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (name.trim().length < 3) {
+    const error = new Error('Name must be at least 3 characters');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  user.name = name.trim();
+  await user.save();
+
+  return user.toPublicJSON();
+}
+
 module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
+  updateUserProfile,
 };

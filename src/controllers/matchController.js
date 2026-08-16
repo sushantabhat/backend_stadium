@@ -1,10 +1,8 @@
 const matchService = require('../services/matchService');
-
-function createHttpError(message, statusCode) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
+const aiService = require('../services/aiService');
+const flywheelService = require('../services/flywheelService');
+const createHttpError = require('http-errors');
+const Match = require('../models/Match');
 
 function parseMatchDate(value) {
   const date = new Date(value);
@@ -27,50 +25,85 @@ function validateCreatePayload(body) {
   }
 
   const pricing = body.pricing || {};
-  ['vip', 'premium', 'general'].forEach((tier) => {
-    const value = Number(pricing[tier]);
-    if (Number.isNaN(value) || value < 0) {
-      throw createHttpError(`pricing.${tier} must be a valid number`, 400);
+  const pricingEntries = pricing instanceof Map ? Object.fromEntries(pricing) : pricing;
+  for (const [key, value] of Object.entries(pricingEntries)) {
+    const num = Number(value);
+    if (Number.isNaN(num) || num < 0) {
+      throw createHttpError(`pricing.${key} must be a valid number`, 400);
     }
-  });
-
-  const layout = body.seatLayout || {};
-  const rows = Number(layout.rows);
-  const seatsPerRow = Number(layout.seatsPerRow);
-  const vipRows = Number(layout.vipRows ?? 0);
-  const premiumRows = Number(layout.premiumRows ?? 0);
-
-  if (!rows || rows < 1 || rows > 30) {
-    throw createHttpError('seatLayout.rows must be between 1 and 30', 400);
   }
 
-  if (!seatsPerRow || seatsPerRow < 1 || seatsPerRow > 50) {
-    throw createHttpError('seatLayout.seatsPerRow must be between 1 and 50', 400);
-  }
-
-  if (vipRows < 0 || premiumRows < 0) {
-    throw createHttpError('VIP and Premium rows cannot be negative', 400);
-  }
-
-  return {
+  const result = {
     title: body.title.trim(),
     teamA: body.teamA.trim(),
     teamB: body.teamB.trim(),
     venue: body.venue.trim(),
     matchDate: parseMatchDate(body.matchDate),
     description: body.description?.trim() || '',
-    pricing: {
-      vip: Number(pricing.vip),
-      premium: Number(pricing.premium),
-      general: Number(pricing.general),
-    },
-    seatLayout: {
-      rows,
-      seatsPerRow,
-      vipRows,
-      premiumRows,
-    },
+    imageUrl: body.imageUrl?.trim() || '',
+    teamALogo: body.teamALogo?.trim() || '',
+    teamBLogo: body.teamBLogo?.trim() || '',
+    pricing: pricingEntries,
+    match_type: body.match_type?.trim() || 'League',
+    match_stage: body.match_stage?.trim() || 'League Stage',
+    cricket_format: body.cricket_format?.trim() || 'T20',
+    global_stars_count: Number(body.global_stars_count) || 0,
+    international_stars_count: Number(body.international_stars_count) || 0,
+    local_stars_count: Number(body.local_stars_count) || 0,
   };
+
+  if (body.stadiumSections && Array.isArray(body.stadiumSections) && body.stadiumSections.length > 0) {
+    result.stadiumSections = body.stadiumSections.map((s, i) => {
+      if (!s.sectionId || !String(s.sectionId).trim()) {
+        throw createHttpError(`stadiumSections[${i}].sectionId is required`, 400);
+      }
+      if (!s.category) {
+        throw createHttpError(`stadiumSections[${i}].category is required`, 400);
+      }
+      if (!s.totalSeats || s.totalSeats < 1) {
+        throw createHttpError(`stadiumSections[${i}].totalSeats must be >= 1`, 400);
+      }
+      const price = Number(s.pricePerTicket);
+      if (Number.isNaN(price) || price < 0) {
+        throw createHttpError(`stadiumSections[${i}].pricePerTicket must be a valid number`, 400);
+      }
+      return {
+        sectionId: String(s.sectionId).trim(),
+        category: s.category,
+        label: s.label || s.sectionId,
+        color: s.color || '#888888',
+        polygon: s.polygon || '',
+        labelX: Number(s.labelX) || 0,
+        labelY: Number(s.labelY) || 0,
+        pricePerTicket: price,
+        totalSeats: Number(s.totalSeats),
+        availableSeats: s.availableSeats != null ? Number(s.availableSeats) : Number(s.totalSeats),
+        rows: Array.isArray(s.rows) ? s.rows : [],
+        gate: s.gate || '',
+      };
+    });
+  } else {
+    const layout = body.seatLayout || {};
+    const rows = Number(layout.rows);
+    const seatsPerRow = Number(layout.seatsPerRow);
+    const vipRows = Number(layout.vipRows ?? 0);
+    const premiumRows = Number(layout.premiumRows ?? 0);
+
+    if (!rows || rows < 1 || rows > 30) {
+      throw createHttpError('seatLayout.rows must be between 1 and 30', 400);
+    }
+    if (!seatsPerRow || seatsPerRow < 1 || seatsPerRow > 50) {
+      throw createHttpError('seatLayout.seatsPerRow must be between 1 and 50', 400);
+    }
+
+    result.seatLayout = { rows, seatsPerRow, vipRows, premiumRows };
+  }
+
+  if (body.venueGates && Array.isArray(body.venueGates)) {
+    result.venueGates = body.venueGates;
+  }
+
+  return result;
 }
 
 async function createMatch(req, res, next) {
@@ -111,6 +144,7 @@ async function getMatchSeats(req, res, next) {
   try {
     const seats = await matchService.getMatchSeats(req.params.id, {
       category: req.query.category,
+      sectionId: req.query.sectionId,
     });
 
     res.status(200).json({ seats });
@@ -127,7 +161,80 @@ async function updateMatch(req, res, next) {
       updates.matchDate = parseMatchDate(updates.matchDate);
     }
 
+    if (updates.title) updates.title = String(updates.title).trim();
+    if (updates.teamA) updates.teamA = String(updates.teamA).trim();
+    if (updates.teamB) updates.teamB = String(updates.teamB).trim();
+    if (updates.venue) updates.venue = String(updates.venue).trim();
+    if (updates.description !== undefined) updates.description = String(updates.description).trim();
+    if (updates.imageUrl !== undefined) updates.imageUrl = String(updates.imageUrl).trim();
+    if (updates.teamALogo !== undefined) updates.teamALogo = String(updates.teamALogo).trim();
+    if (updates.teamBLogo !== undefined) updates.teamBLogo = String(updates.teamBLogo).trim();
+
+    if (updates.pricing) {
+      const pricing = updates.pricing;
+      updates.pricing = pricing instanceof Map ? Object.fromEntries(pricing) : pricing;
+    }
+
+    if (updates.stadiumSections) {
+      const validated = [];
+      const sectionIds = new Set();
+      for (let i = 0; i < updates.stadiumSections.length; i++) {
+        const s = updates.stadiumSections[i];
+        if (!s.sectionId || !String(s.sectionId).trim()) {
+          throw createHttpError(`stadiumSections[${i}].sectionId is required`, 400);
+        }
+        const trimmedId = String(s.sectionId).trim();
+        if (sectionIds.has(trimmedId)) {
+          throw createHttpError(`stadiumSections[${i}].sectionId "${trimmedId}" is duplicated — each section must have a unique ID`, 400);
+        }
+        sectionIds.add(trimmedId);
+        if (!s.category) {
+          throw createHttpError(`stadiumSections[${i}].category is required`, 400);
+        }
+        const validCategories = ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'];
+        if (!validCategories.includes(s.category)) {
+          throw createHttpError(`stadiumSections[${i}].category must be one of: ${validCategories.join(', ')}`, 400);
+        }
+        if (s.totalSeats == null || Number(s.totalSeats) < 1) {
+          throw createHttpError(`stadiumSections[${i}].totalSeats must be at least 1`, 400);
+        }
+        if (s.pricePerTicket == null || Number(s.pricePerTicket) < 0) {
+          throw createHttpError(`stadiumSections[${i}].pricePerTicket must be a non-negative number`, 400);
+        }
+        validated.push({
+          sectionId: String(s.sectionId).trim(),
+          category: s.category,
+          label: s.label || s.sectionId,
+          color: s.color || '#888888',
+          polygon: s.polygon || '',
+          labelX: Number(s.labelX) || 0,
+          labelY: Number(s.labelY) || 0,
+          pricePerTicket: Number(s.pricePerTicket) || 0,
+          totalSeats: Number(s.totalSeats) || 0,
+          availableSeats: s.availableSeats != null ? Number(s.availableSeats) : (Number(s.totalSeats) || 0),
+          rows: (s.rows || []).map((r) => String(r).trim()).filter(Boolean),
+          gate: s.gate || '',
+        });
+      }
+      updates.stadiumSections = validated;
+    }
+
+    // Fetch the original match to see if the status is actually changing
+    const originalMatch = await Match.findById(req.params.id);
+    if (!originalMatch) {
+      throw createHttpError('Match not found', 404);
+    }
+    const wasCompleted = originalMatch.status === 'completed';
+
     const match = await matchService.updateMatch(req.params.id, updates);
+
+    // Trigger AI Data Flywheel if match just finished
+    if (match.status === 'completed' && !wasCompleted) {
+      // Run asynchronously in the background so it doesn't block the API response
+      flywheelService.processCompletedMatch(match._id).catch(err => {
+        console.error('[MatchController] Flywheel processing failed:', err);
+      });
+    }
 
     res.status(200).json({
       message: 'Match updated successfully',

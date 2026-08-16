@@ -1,7 +1,13 @@
 const mongoose = require('mongoose');
+const { spawn } = require('child_process');
+const path = require('path');
+const crypto = require('crypto');
 const Match = require('../models/Match');
+const Team = require('../models/Team');
+const Player = require('../models/Player');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
+const Venue = require('../models/Venue');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -9,130 +15,48 @@ function createHttpError(message, statusCode) {
   return error;
 }
 
-/**
- * AI Dynamic Pricing Suggester (Enhanced)
- * 
- * Uses multi-factor analysis:
- * - Occupancy rate and hold rate
- * - Time before match
- * - Sales velocity
- * - Day of week patterns
- * 
- * Architecture: ML-ready with feature extraction and prediction engine
- */
-async function getDynamicPricingSuggestions(matchId) {
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw createHttpError('Match not found', 404);
-  }
+// --- Automated Popularity Lookups ---
+const teamStats = {
+  "Kathmandu Gurkhas": 8,
+  "Chitwan Rhinos": 7,
+  "Janakpur Bolts": 8,
+  "Biratnagar Kings": 6,
+  "Lumbini Lions": 5,
+  "Pokhara Avengers": 5,
+  "Sudurpaschim Royals": 4,
+  "Karnali Yaks": 4,
+};
 
-  const totalSeats = await Seat.countDocuments({ match: matchId });
-  const bookedSeats = await Seat.countDocuments({ match: matchId, status: 'booked' });
-  const lockedSeats = await Seat.countDocuments({ match: matchId, status: 'locked' });
+const rivalries = [
+  // NPL Rivalries (2024+)
+  ["Kathmandu Gurkhas", "Chitwan Rhinos"], // The Bagmati Derby
+  ["Janakpur Bolts", "Sudurpaschim Royals"], // The Finalists' Rematch
+  ["Lumbini Lions", "Biratnagar Kings"], // The National Captains' Clash
+  ["Janakpur Bolts", "Biratnagar Kings"], // The Terai Derby
+  // International Rivalries
+  ["Nepal", "UAE"],
+  ["Nepal", "Netherlands"]
+];
 
-  const occupancyRate = totalSeats > 0 ? bookedSeats / totalSeats : 0;
-  const holdRate = totalSeats > 0 ? lockedSeats / totalSeats : 0;
-  const activityMetric = occupancyRate + holdRate * 0.5;
+const matchTypeBaseScores = {
+  "Friendly": 4,
+  "League": null, 
+  "ODI": 6,
+  "CWL 2": 7,
+  "T20": 8,
+  "International": 8
+};
 
-  let multiplier = 1.0;
-  let demandLevel = 'Low';
+const matchStageModifiers = {
+  "League Stage": 0,
+  "Group Stage": 0,
+  "Quarter-Final": 1,
+  "Semi-Final": 2,
+  "Final": 3,
+  "Decider": 3
+};
 
-  if (activityMetric >= 0.8) {
-    multiplier = 1.40;
-    demandLevel = 'Critical';
-  } else if (activityMetric >= 0.5) {
-    multiplier = 1.25;
-    demandLevel = 'High';
-  } else if (activityMetric >= 0.2) {
-    multiplier = 1.10;
-    demandLevel = 'Moderate';
-  }
 
-  // Time factor
-  const hoursUntilMatch = (new Date(match.matchDate) - new Date()) / (1000 * 60 * 60);
-  let timeMultiplier = 1.0;
-  if (hoursUntilMatch <= 2) timeMultiplier = 1.30;
-  else if (hoursUntilMatch <= 24) timeMultiplier = 1.20;
-  else if (hoursUntilMatch <= 72) timeMultiplier = 1.10;
-  else if (hoursUntilMatch <= 168) timeMultiplier = 1.05;
-
-  const finalMultiplier = Math.round(multiplier * timeMultiplier * 100) / 100;
-
-  return {
-    matchId,
-    title: match.title,
-    currentPricing: match.pricing,
-    suggestedPricing: {
-      vip: Math.round(match.pricing.vip * finalMultiplier),
-      premium: Math.round(match.pricing.premium * finalMultiplier),
-      general: Math.round(match.pricing.general * finalMultiplier),
-    },
-    occupancyRate: (occupancyRate * 100).toFixed(1),
-    holdRate: (holdRate * 100).toFixed(1),
-    multiplier: finalMultiplier,
-    demandLevel,
-    factors: {
-      demandLevel,
-      urgency: hoursUntilMatch <= 24 ? 'Same day' : hoursUntilMatch <= 168 ? 'This week' : 'Early bird',
-      dayFactor: [0, 6].includes(new Date(match.matchDate).getDay()) ? 'Weekend premium' : 'Weekday',
-    },
-    confidence: 0.8,
-  };
-}
-
-/**
- * AI Smart Seat Recommendation (Enhanced)
- * 
- * Uses multi-factor analysis:
- * - Center proximity
- * - Row preference (front rows)
- * - User's category preferences
- * - Price value scoring
- * - Group potential
- * 
- * Architecture: ML-ready with feature extraction and prediction engine
- */
-async function getSmartSeatRecommendations(matchId, category, count = 2) {
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw createHttpError('Match not found', 404);
-  }
-
-  const seatsPerRow = match.seatLayout.seatsPerRow;
-  const centerCol = Math.ceil(seatsPerRow / 2);
-
-  // Retrieve available seats in category
-  const availableSeats = await Seat.find({
-    match: matchId,
-    category,
-    status: 'available',
-  });
-
-  if (availableSeats.length === 0) {
-    return [];
-  }
-
-  // Sort: closest row first, then closest to center column
-  const sortedRecommendations = availableSeats.sort((a, b) => {
-    if (a.row !== b.row) {
-      return a.row.localeCompare(b.row);
-    }
-    const distA = Math.abs(a.number - centerCol);
-    const distB = Math.abs(b.number - centerCol);
-    return distA - distB;
-  });
-
-  return sortedRecommendations.slice(0, Number(count)).map(seat => ({
-    _id: seat._id,
-    seatLabel: seat.seatLabel,
-    row: seat.row,
-    number: seat.number,
-    category: seat.category,
-    price: seat.price,
-    score: (1 / (Math.abs(seat.number - centerCol) + 1)) * (1 / (seat.row.charCodeAt(0) - 64)),
-    explanation: Math.abs(seat.number - centerCol) <= 2 ? 'Excellent center view' : 'Good seat selection',
-  }));
-}
 
 /**
  * AI Match Recommendation (Enhanced)
@@ -261,8 +185,199 @@ async function getMatchRecommendations(userId) {
   return topRecommendations;
 }
 
+const cityCoordinates = {
+  'Kathmandu': { lat: 27.7172, lon: 85.3240 },
+  'Pokhara': { lat: 28.2096, lon: 83.9856 },
+  'Chitwan': { lat: 27.5291, lon: 84.4552 },
+  'Biratnagar': { lat: 26.4525, lon: 87.2718 },
+  'Bhairahawa': { lat: 27.5065, lon: 83.4496 },
+  'Lumbini': { lat: 27.4840, lon: 83.2761 },
+  'Janakpur': { lat: 26.7288, lon: 85.9260 },
+  'Karnali': { lat: 28.5993, lon: 81.6241 },
+  'Dhangadhi': { lat: 28.6946, lon: 80.5621 },
+};
+
+/**
+ * predictAttendance Prediction
+ * Spawns a child process to run the trained Python model.
+ */
+async function calculateMatchHypeAndWeather(match) {
+  const matchDate = new Date(match.matchDate);
+  
+  const mStage = match.match_stage || "League Stage";
+  
+  let teamATier = 2;
+  let teamBTier = 2;
+  let hasTeamRivalry = 0;
+  let isHomeMatch = 0;
+  let avgTicketPrice = 500;
+  let matchTime = matchDate.getHours() >= 16 ? "Day-Night" : "Day";
+
+  try {
+    const teamADoc = await Team.findOne({ name: match.teamA });
+    const teamBDoc = await Team.findOne({ name: match.teamB });
+    
+    if (teamADoc) teamATier = teamADoc.franchiseTier || 2;
+    if (teamBDoc) teamBTier = teamBDoc.franchiseTier || 2;
+    
+    const isRivalry = rivalries.some(r => 
+      (r.includes(match.teamA) && r.includes(match.teamB))
+    );
+    if (isRivalry) hasTeamRivalry = 1;
+    
+    const venueRecord = await Venue.findOne({ name: match.venue });
+    const matchCity = venueRecord?.location || 'Kathmandu';
+    if ((teamADoc && teamADoc.homeCity === matchCity) || (teamBDoc && teamBDoc.homeCity === matchCity)) {
+      isHomeMatch = 1;
+    }
+
+    if (match.pricing && match.pricing.size > 0) {
+      const pricingObj = match.pricing instanceof Map
+        ? Object.fromEntries(match.pricing)
+        : match.pricing || {};
+      const sections = match.stadiumSections || [];
+      let totalSeats = 0;
+      let weightedSum = 0;
+      for (const section of sections) {
+        const price = pricingObj[section.category] || section.pricePerTicket || 0;
+        const seats = section.totalSeats || 0;
+        weightedSum += price * seats;
+        totalSeats += seats;
+      }
+      avgTicketPrice = totalSeats > 0 ? Math.round(weightedSum / totalSeats) : 500;
+    }
+  } catch (err) {
+    console.log('[AI Logic] Error fetching team logic:', err);
+  }
+
+  // 5. Fetch Live Weather Data from Open-Meteo
+  const venueRecord = await Venue.findOne({ name: match.venue });
+  const city = venueRecord?.location || 'Kathmandu';
+  const coords = cityCoordinates[city] || cityCoordinates['Kathmandu'];
+  
+  const matchDateStr = match.matchDate.toISOString().split('T')[0];
+  let max_temp = 22.0;
+  let rain_mm = 0.0;
+  
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=temperature_2m_max,rain_sum&timezone=auto&start_date=${matchDateStr}&end_date=${matchDateStr}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.daily && data.daily.temperature_2m_max && data.daily.temperature_2m_max[0] != null) {
+      max_temp = data.daily.temperature_2m_max[0];
+      rain_mm = data.daily.rain_sum[0] || 0.0;
+      console.log(`[AI Weather] Pulled live weather for ${city}: ${max_temp}°C, ${rain_mm}mm rain`);
+    } else {
+      console.log(`[AI Weather] Match date outside forecast window for ${city}, using fallback.`);
+    }
+  } catch (err) {
+    console.error("[AI Weather] Failed to fetch live weather:", err.message);
+  }
+
+  return {
+    teamATier,
+    teamBTier,
+    mStage,
+    hasTeamRivalry,
+    isHomeMatch,
+    matchTime,
+    avgTicketPrice,
+    max_temp,
+    rain_mm,
+    is_weekend: [0, 6].includes(matchDate.getDay()) ? 1 : 0,
+    is_holiday: 0
+  };
+}
+
+async function predictAttendance(matchId) {
+  const match = await Match.findById(matchId);
+  if (!match) {
+    throw createHttpError('Match not found', 404);
+  }
+
+  const features = await calculateMatchHypeAndWeather(match);
+  const matchDate = new Date(match.matchDate);
+
+  const inputData = {
+    home_tier: features.teamATier,
+    away_tier: features.teamBTier,
+    capacity: match.totalSeats || 15000,
+    temperature: features.max_temp,
+    rainfall: features.rain_mm,
+    month: matchDate.getMonth() + 1,
+    day_of_week: matchDate.getDay()
+  };
+
+  console.log(`[AI Prediction] Request: ${match.teamA}(T${inputData.home_tier}) vs ${match.teamB}(T${inputData.away_tier}) | Cap: ${inputData.capacity} | Temp: ${inputData.temperature}`);
+
+  return new Promise((resolve, reject) => {
+    // Determine path to the python script and venv
+    const pythonScript = path.join(__dirname, '../../ml/predict.py');
+    const venvPython = path.join(__dirname, '../../ml/venv/bin/python');
+    
+    // Spawn python process
+    const pythonProcess = spawn(venvPython, [pythonScript]);
+
+    let dataString = '';
+    pythonProcess.stdout.on('data', (data) => {
+      dataString += data.toString();
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      console.error('[AI Predict Error]', data.toString());
+    });
+
+    pythonProcess.on('error', (err) => {
+      console.error('[AI Predict Process Error]', err.message);
+      // Don't crash the server, just return the fallback
+      resolve({
+        matchId,
+        prediction: Math.round(inputData.capacity * 0.5), // Fallback
+        error: 'Prediction script failed to spawn',
+        factors: inputData
+      });
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        return resolve({
+          matchId,
+          prediction: Math.round(inputData.capacity * 0.5), // Fallback
+          error: 'Prediction script failed',
+          factors: inputData
+        });
+      }
+      try {
+        const result = JSON.parse(dataString);
+        if (result.error) throw new Error(result.error);
+        
+        resolve({
+          matchId,
+          prediction: result.attendance,
+          fill_rate: result.fill_rate,
+          factors: inputData,
+          timestamp: new Date()
+        });
+      } catch (err) {
+        console.error('Failed to parse prediction result:', err);
+        resolve({
+          matchId,
+          prediction: Math.round(inputData.capacity * 0.5), // Fallback
+          error: err.message,
+          factors: inputData
+        });
+      }
+    });
+
+    // Send features to python script via stdin
+    pythonProcess.stdin.write(JSON.stringify(inputData));
+    pythonProcess.stdin.end();
+  });
+}
+
 module.exports = {
-  getDynamicPricingSuggestions,
-  getSmartSeatRecommendations,
   getMatchRecommendations,
+  predictAttendance,
+  calculateMatchHypeAndWeather,
 };

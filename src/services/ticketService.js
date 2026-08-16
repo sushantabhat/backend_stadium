@@ -1,6 +1,7 @@
 const Ticket = require('../models/Ticket');
 const Seat = require('../models/Seat');
 const AttendanceLog = require('../models/AttendanceLog');
+const Refund = require('../models/Refund');
 const socketService = require('./socketService');
 
 function createHttpError(message, statusCode) {
@@ -9,14 +10,54 @@ function createHttpError(message, statusCode) {
   return error;
 }
 
+function formatNepalTime(date) {
+  if (!date) return 'unknown';
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kathmandu',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(date));
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * Fetch tickets for the logged-in fan.
  */
 async function getMyTickets(userId) {
-  return Ticket.find({ user: userId })
+  const tickets = await Ticket.find({ user: userId })
     .populate('match')
-    .populate('seat', 'seatLabel category price')
+    .populate('seat', 'seatLabel category price gate')
     .sort({ createdAt: -1 });
+
+  const refunds = await Refund.find({ user: userId, status: { $in: ['processing', 'completed'] } })
+    .select('booking status amount estimatedSettlementDate settledAt refundId gatewayRefundId')
+    .lean();
+
+  const refundMap = {};
+  for (const r of refunds) {
+    refundMap[r.booking.toString()] = r;
+  }
+
+  return tickets.map(t => {
+    const tJson = t.toObject();
+    const bookingId = tJson.booking?.toString();
+    const refund = bookingId ? refundMap[bookingId] : null;
+    if (refund) {
+      tJson.refund = {
+        status: refund.status,
+        amount: refund.amount,
+        estimatedSettlementDate: refund.estimatedSettlementDate,
+        settledAt: refund.settledAt,
+        refundId: refund.refundId,
+        gatewayRefundId: refund.gatewayRefundId,
+      };
+    }
+    return tJson;
+  });
 }
 
 /**
@@ -61,10 +102,32 @@ async function verifyTicket(staffId, ticketCode) {
     throw createHttpError('Ticket not found. Invalid QR code.', 404);
   }
 
+  if (existingTicket.status === 'cancelled') {
+    console.log(`[TicketVerify] CANCELLED code="${trimmedCode}"`);
+    throw createHttpError(
+      'This ticket was from a cancelled match. Please contact support.',
+      410
+    );
+  }
+
   if (existingTicket.status === 'used') {
     console.log(`[TicketVerify] ALREADY USED code="${trimmedCode}" usedAt=${existingTicket.usedAt}`);
+    try {
+      const FraudLog = require('../models/FraudLog');
+      await FraudLog.create({
+        ticketCode: trimmedCode,
+        ticket: existingTicket._id,
+        match: existingTicket.match,
+        scannedBy: staffId,
+        reason: 'duplicate_scan',
+        status: 'open',
+        details: `Duplicate scan attempt at ${formatNepalTime(new Date())}. Original entry at ${formatNepalTime(existingTicket.usedAt)}.`,
+      });
+    } catch (fraudErr) {
+      console.error('[TicketVerify] Fraud log write failed (non-fatal):', fraudErr.message);
+    }
     throw createHttpError(
-      `Ticket already used at ${existingTicket.usedAt?.toLocaleTimeString() || 'unknown time'}. Duplicate entry denied.`,
+      `Ticket already used at ${formatNepalTime(existingTicket.usedAt)}. Duplicate entry denied.`,
       409
     );
   }
@@ -84,7 +147,7 @@ async function verifyTicket(staffId, ticketCode) {
   )
     .populate('user', 'name email')
     .populate('match')
-    .populate('seat', 'seatLabel category price');
+    .populate('seat', 'seatLabel category price gate');
 
   // Handle race condition: another request marked it as "used" between
   // our read and write. This should be extremely rare but we handle it.
@@ -92,7 +155,7 @@ async function verifyTicket(staffId, ticketCode) {
     console.log(`[TicketVerify] RACE CONDITION code="${trimmedCode}" — ticket was marked used between read and write`);
     const raceTicket = await Ticket.findById(existingTicket._id);
     throw createHttpError(
-      `Ticket already used at ${raceTicket?.usedAt?.toLocaleTimeString() || 'unknown time'}. Duplicate entry denied.`,
+      `Ticket already used at ${formatNepalTime(raceTicket?.usedAt)}. Duplicate entry denied.`,
       409
     );
   }
@@ -102,12 +165,14 @@ async function verifyTicket(staffId, ticketCode) {
   // Step 3: Create attendance log
   let log = null;
   try {
+    const gateLabel = ticket.seat?.gate || '';
     log = await AttendanceLog.create({
       ticket: ticket._id,
       match: ticket.match?._id || ticket.match,
       user: ticket.user?._id || ticket.user,
       seat: ticket.seat?._id || ticket.seat,
       scannedBy: staffId,
+      gate: gateLabel,
       entryTime: ticket.usedAt,
     });
     console.log(`[TicketVerify] LOG CREATED logId=${log._id}`);
@@ -160,7 +225,7 @@ async function getStaffScanHistory(staffId) {
   return AttendanceLog.find({ scannedBy: staffId })
     .populate('user', 'name')
     .populate('match')
-    .populate('seat', 'seatLabel category price')
+    .populate('seat', 'seatLabel category price gate')
     .sort({ entryTime: -1 })
     .limit(50);
 }

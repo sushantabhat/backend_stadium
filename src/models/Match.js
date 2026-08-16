@@ -1,5 +1,27 @@
 const mongoose = require('mongoose');
 
+const stadiumSectionSchema = new mongoose.Schema(
+  {
+    sectionId: { type: String, required: true, trim: true },
+    category: {
+      type: String,
+      enum: ['platinum', 'gold', 'silver', 'bronze', 'general', 'supporters', 'category1', 'category2', 'category3', 'category4'],
+      required: true,
+    },
+    label: { type: String, required: true, trim: true },
+    color: { type: String, default: '#888888' },
+    polygon: { type: String, default: '' },
+    labelX: { type: Number, default: 0 },
+    labelY: { type: Number, default: 0 },
+    pricePerTicket: { type: Number, required: true, min: 0 },
+    totalSeats: { type: Number, required: true, min: 1 },
+    availableSeats: { type: Number, default: 0 },
+    rows: [{ type: String }],
+    gate: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
 const matchSchema = new mongoose.Schema(
   {
     title: {
@@ -37,25 +59,51 @@ const matchSchema = new mongoose.Schema(
       enum: ['upcoming', 'live', 'completed', 'cancelled'],
       default: 'upcoming',
     },
+    match_stage: {
+      type: String,
+      default: 'League Stage',
+    },
+    cricket_format: {
+      type: String,
+      default: 'T20',
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
     pricing: {
-      vip: { type: Number, required: true, min: 0 },
-      premium: { type: Number, required: true, min: 0 },
-      general: { type: Number, required: true, min: 0 },
+      type: Map,
+      of: Number,
+      default: {},
+    },
+    stadiumSections: {
+      type: [stadiumSectionSchema],
+      default: [],
     },
     seatLayout: {
-      rows: { type: Number, required: true, min: 1, max: 30 },
-      seatsPerRow: { type: Number, required: true, min: 1, max: 50 },
-      vipRows: { type: Number, required: true, min: 0 },
-      premiumRows: { type: Number, required: true, min: 0 },
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     totalSeats: {
       type: Number,
       default: 0,
+    },
+    venueGates: { type: [String], default: [] },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    teamALogo: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    teamBLogo: {
+      type: String,
+      trim: true,
+      default: '',
     },
   },
   { timestamps: true }

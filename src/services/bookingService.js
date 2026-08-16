@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Ticket = require('../models/Ticket');
@@ -9,6 +10,13 @@ function createHttpError(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+}
+
+function getPricing(match) {
+  if (!match.pricing) return {};
+  return match.pricing instanceof Map
+    ? Object.fromEntries(match.pricing)
+    : match.pricing;
 }
 
 /**
@@ -73,22 +81,32 @@ async function lockSeats(userId, matchId, seatIds) {
   // Lock seats
   const updatedSeats = [];
   for (const seat of seats) {
+    const alreadyLockedByUser =
+      seat.status === 'locked' &&
+      seat.lockedBy?.toString() === userId &&
+      seat.lockedUntil &&
+      seat.lockedUntil > now;
+
     seat.status = 'locked';
     seat.lockedBy = userId;
-    seat.lockedUntil = lockedUntil;
+    // Do NOT refresh the timer if the same user already holds a valid lock —
+    // otherwise re-locking could hold a seat past the 5-minute window.
+    if (!alreadyLockedByUser) {
+      seat.lockedUntil = lockedUntil;
+    }
     await seat.save();
 
     updatedSeats.push(seat);
 
-    // Emit live seat status update via Socket.io
+    const pricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: seat.price,
+      price: pricing[seat.category] ?? seat.price,
       status: 'locked',
       lockedBy: userId,
-      lockedUntil: lockedUntil,
+      lockedUntil: seat.lockedUntil,
     });
   }
 
@@ -103,6 +121,7 @@ async function unlockSeats(userId, matchId, seatIds) {
     return [];
   }
 
+  const match = await Match.findById(matchId);
   const seats = await Seat.find({
     _id: { $in: seatIds },
     match: matchId,
@@ -119,7 +138,38 @@ async function unlockSeats(userId, matchId, seatIds) {
     updatedSeats.push(seat);
 
     // Emit live seat status update via Socket.io
+    const pricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
+      id: seat._id,
+      seatLabel: seat.seatLabel,
+      category: seat.category,
+      price: pricing[seat.category] ?? seat.price,
+      status: 'available',
+      lockedBy: null,
+      lockedUntil: null,
+    });
+  }
+
+  return updatedSeats;
+}
+
+/**
+ * Release all expired seat locks (background sweep).
+ */
+async function releaseExpiredLocks() {
+  const now = new Date();
+  const expired = await Seat.find({
+    status: 'locked',
+    lockedUntil: { $lt: now },
+  });
+
+  for (const seat of expired) {
+    seat.status = 'available';
+    seat.lockedBy = null;
+    seat.lockedUntil = null;
+    await seat.save();
+
+    socketService.emitSeatUpdate(seat.match, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
@@ -130,7 +180,20 @@ async function unlockSeats(userId, matchId, seatIds) {
     });
   }
 
-  return updatedSeats;
+  if (expired.length > 0) {
+    console.log(`🔓 Released ${expired.length} expired seat lock(s)`);
+  }
+
+  return expired.length;
+}
+
+function startLockExpirySweep(intervalMs = 30 * 1000) {
+  setInterval(() => {
+    releaseExpiredLocks().catch((err) => {
+      console.error('Lock expiry sweep failed:', err.message);
+    });
+  }, intervalMs);
+  console.log(`🔓 Lock expiry sweeper started (every ${intervalMs / 1000}s)`);
 }
 
 /**
@@ -179,8 +242,9 @@ async function confirmBooking(userId, matchId, seatIds) {
     }
   }
 
-  // Calculate total amount server-side from actual seat prices (never trust client)
-  const totalAmount = seats.reduce((sum, seat) => sum + seat.price, 0);
+  // Calculate total amount server-side from current match pricing (never trust client)
+  const pricing = getPricing(match);
+  const totalAmount = seats.reduce((sum, seat) => sum + (pricing[seat.category] ?? seat.price), 0);
 
   // Create booking record
   const booking = await Booking.create({
@@ -200,9 +264,10 @@ async function confirmBooking(userId, matchId, seatIds) {
     seat.lockedUntil = null;
     await seat.save();
 
-    // Generate unique ticket verification code (e.g. STADIUM-MATCHID-SEATID-RANDOM)
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const ticketCode = `TKT-${matchId.toString().substring(18)}-${seat.seatLabel}-${randomSuffix}`;
+    // Generate unique ticket verification code using crypto
+    const randomSuffix = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const matchPart = matchId.toString().slice(-6);
+    const ticketCode = `TKT-${matchPart}-${seat.seatLabel}-${randomSuffix}`;
 
     const ticket = await Ticket.create({
       booking: booking._id,
@@ -215,11 +280,12 @@ async function confirmBooking(userId, matchId, seatIds) {
     tickets.push(ticket);
 
     // Emit live seat status update via Socket.io
+    const bookedPricing = getPricing(match);
     socketService.emitSeatUpdate(matchId, {
       id: seat._id,
       seatLabel: seat.seatLabel,
       category: seat.category,
-      price: seat.price,
+      price: bookedPricing[seat.category] ?? seat.price,
       status: 'booked',
       lockedBy: null,
       lockedUntil: null,
@@ -277,4 +343,6 @@ module.exports = {
   unlockSeats,
   confirmBooking,
   getMyBookings,
+  releaseExpiredLocks,
+  startLockExpirySweep,
 };

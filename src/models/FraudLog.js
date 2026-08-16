@@ -27,6 +27,29 @@ const fraudLogSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    status: {
+      type: String,
+      enum: ['open', 'resolved', 'escalated'],
+      default: 'open',
+    },
+    resolution: {
+      type: String,
+      enum: ['dismissed', 'allowed', ''],
+      default: '',
+    },
+    resolvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+    notes: {
+      type: String,
+      default: '',
+    },
     timestamp: {
       type: Date,
       default: Date.now,
@@ -37,5 +60,6 @@ const fraudLogSchema = new mongoose.Schema(
 
 fraudLogSchema.index({ timestamp: 1 });
 fraudLogSchema.index({ reason: 1 });
+fraudLogSchema.index({ status: 1 });
 
 module.exports = mongoose.model('FraudLog', fraudLogSchema);

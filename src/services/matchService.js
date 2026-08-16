@@ -2,6 +2,26 @@ const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Seat = require('../models/Seat');
 const Booking = require('../models/Booking');
+const { processRefundForBooking } = require('./refundService');
+const { createNotification } = require('./notificationService');
+const { SEAT_CATEGORIES } = require('../models/Seat');
+
+const GATE_RULES = [
+  { keywords: ['supporters'], gate: 'Supporters Entrance' },
+  { keywords: ['north'], gate: 'North Gate' },
+  { keywords: ['south'], gate: 'South Gate' },
+  { keywords: ['east'], gate: 'East Gate' },
+  { keywords: ['west'], gate: 'West Gate' },
+];
+
+function inferGate(section) {
+  if (section.gate) return section.gate;
+  const label = ((section.label || '') + ' ' + (section.sectionId || '')).toLowerCase();
+  for (const rule of GATE_RULES) {
+    if (rule.keywords.some((k) => label.includes(k))) return rule.gate;
+  }
+  return '';
+}
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -10,31 +30,67 @@ function createHttpError(message, statusCode) {
 }
 
 function buildSeatDocuments(match) {
-  const { rows, seatsPerRow, vipRows, premiumRows } = match.seatLayout;
   const seats = [];
 
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
-    const rowLabel = String.fromCharCode(65 + rowIndex);
-    let category = 'general';
+  if (match.stadiumSections && match.stadiumSections.length > 0) {
+    for (const section of match.stadiumSections) {
+      let rows = section.rows || [];
+      if (!rows.length) {
+        const numRows = Math.ceil(section.totalSeats / 20); // default to 20 seats per row
+        rows = Array.from({ length: Math.max(numRows, 1) }, (_, i) => `R${i + 1}`);
+      }
+      const base = Math.floor(section.totalSeats / rows.length);
+      const extra = section.totalSeats % rows.length;
 
-    if (rowIndex < vipRows) {
-      category = 'vip';
-    } else if (rowIndex < vipRows + premiumRows) {
-      category = 'premium';
+      const gate = inferGate(section);
+
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const rowLabel = rows[rowIndex];
+        const price = section.pricePerTicket || 0;
+        const seatsInRow = rowIndex < extra ? base + 1 : base;
+
+        for (let seatNumber = 1; seatNumber <= seatsInRow; seatNumber += 1) {
+          seats.push({
+            match: match._id,
+            sectionId: section.sectionId,
+            gate,
+            seatLabel: `${section.sectionId}-${rowLabel}-${seatNumber}`,
+            row: rowLabel,
+            number: seatNumber,
+            category: section.category,
+            price,
+            status: 'available',
+          });
+        }
+      }
     }
+  } else if (match.seatLayout) {
+    const { rows, seatsPerRow, vipRows, premiumRows } = match.seatLayout;
 
-    const price = match.pricing[category];
+    for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+      const rowLabel = `R${rowIndex + 1}`;
+      let category = 'silver';
 
-    for (let seatNumber = 1; seatNumber <= seatsPerRow; seatNumber += 1) {
-      seats.push({
-        match: match._id,
-        seatLabel: `${rowLabel}-${seatNumber}`,
-        row: rowLabel,
-        number: seatNumber,
-        category,
-        price,
-        status: 'available',
-      });
+      if (rowIndex < vipRows) {
+        category = 'platinum';
+      } else if (rowIndex < vipRows + premiumRows) {
+        category = 'gold';
+      }
+
+      const price = match.pricing?.[category] || 0;
+
+      for (let seatNumber = 1; seatNumber <= seatsPerRow; seatNumber += 1) {
+        seats.push({
+          match: match._id,
+          sectionId: null,
+          seatLabel: `${rowLabel}-${seatNumber}`,
+          row: rowLabel,
+          number: seatNumber,
+          category,
+          price,
+          status: 'available',
+        });
+      }
     }
   }
 
@@ -59,33 +115,74 @@ async function getSeatStats(matchId) {
         booked: {
           $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
         },
-        vip: {
-          $sum: { $cond: [{ $eq: ['$category', 'vip'] }, 1, 0] },
+      },
+    },
+  ]);
+
+  const categoryStats = await Seat.aggregate([
+    { $match: { match: objectId } },
+    {
+      $group: {
+        _id: '$category',
+        count: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] },
         },
-        premium: {
-          $sum: { $cond: [{ $eq: ['$category', 'premium'] }, 1, 0] },
+        booked: {
+          $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
         },
-        general: {
-          $sum: { $cond: [{ $eq: ['$category', 'general'] }, 1, 0] },
+      },
+    },
+  ]);
+
+  const sectionStats = await Seat.aggregate([
+    { $match: { match: objectId } },
+    {
+      $group: {
+        _id: '$sectionId',
+        count: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] },
+        },
+        booked: {
+          $sum: { $cond: [{ $eq: ['$status', 'booked'] }, 1, 0] },
         },
       },
     },
   ]);
 
   const result = stats[0] || {};
+  const categoryMap = {};
+  categoryStats.forEach((cs) => {
+    categoryMap[cs._id] = cs.count;
+    categoryMap[`${cs._id}_available`] = cs.available;
+    categoryMap[`${cs._id}_booked`] = cs.booked;
+  });
+
+  const sectionMap = {};
+  sectionStats.forEach((ss) => {
+    if (ss._id) {
+      sectionMap[`section_${ss._id}_total`] = ss.count;
+      sectionMap[`section_${ss._id}_available`] = ss.available;
+      sectionMap[`section_${ss._id}_booked`] = ss.booked;
+    }
+  });
 
   return {
     total: result.total || 0,
     available: result.available || 0,
     locked: result.locked || 0,
     booked: result.booked || 0,
-    vip: result.vip || 0,
-    premium: result.premium || 0,
-    general: result.general || 0,
+    ...categoryMap,
+    ...sectionMap,
   };
 }
 
 function formatMatch(match, seatStats) {
+  const pricingObj = match.pricing instanceof Map
+    ? Object.fromEntries(match.pricing)
+    : match.pricing || {};
+
   return {
     _id: match._id,
     id: match._id,
@@ -95,8 +192,19 @@ function formatMatch(match, seatStats) {
     venue: match.venue,
     matchDate: match.matchDate,
     description: match.description,
+    imageUrl: match.imageUrl || '',
+    teamALogo: match.teamALogo || '',
+    teamBLogo: match.teamBLogo || '',
+    match_type: match.match_type,
+    match_stage: match.match_stage,
+    cricket_format: match.cricket_format,
+    global_stars_count: match.global_stars_count || 0,
+    international_stars_count: match.international_stars_count || 0,
+    local_stars_count: match.local_stars_count || 0,
     status: match.status,
-    pricing: match.pricing,
+    pricing: pricingObj,
+    stadiumSections: match.stadiumSections || [],
+    venueGates: match.venueGates || [],
     seatLayout: match.seatLayout,
     totalSeats: match.totalSeats,
     createdBy: match.createdBy,
@@ -106,21 +214,49 @@ function formatMatch(match, seatStats) {
   };
 }
 
-async function createMatch(adminId, payload) {
-  const { rows, seatsPerRow, vipRows, premiumRows } = payload.seatLayout;
+function parsePricing(pricing) {
+  if (!pricing) return {};
+  const result = {};
+  const entries = pricing instanceof Map ? pricing.entries() : Object.entries(pricing);
+  for (const [key, value] of entries) {
+    const num = Number(value);
+    if (!Number.isNaN(num) && num >= 0) {
+      result[key] = num;
+    }
+  }
+  return result;
+}
 
-  if (vipRows + premiumRows > rows) {
-    throw createHttpError('VIP rows + Premium rows cannot exceed total rows', 400);
+async function createMatch(adminId, payload) {
+  const pricing = parsePricing(payload.pricing);
+  let totalSeats = 0;
+
+  if (payload.stadiumSections && payload.stadiumSections.length > 0) {
+    for (const section of payload.stadiumSections) {
+      totalSeats += section.totalSeats || 0;
+    }
+  } else if (payload.seatLayout) {
+    const { rows, seatsPerRow } = payload.seatLayout;
+    totalSeats = rows * seatsPerRow;
   }
 
   const match = await Match.create({
     ...payload,
+    pricing,
     createdBy: adminId,
-    totalSeats: rows * seatsPerRow,
+    totalSeats,
   });
 
   const seatDocuments = buildSeatDocuments(match);
-  await Seat.insertMany(seatDocuments);
+  if (seatDocuments.length > 0) {
+    const seen = new Set();
+    const unique = seatDocuments.filter((s) => {
+      if (seen.has(s.seatLabel)) return false;
+      seen.add(s.seatLabel);
+      return true;
+    });
+    await Seat.insertMany(unique, { ordered: false }).catch(() => {});
+  }
 
   const seatStats = await getSeatStats(match._id);
   return formatMatch(match, seatStats);
@@ -131,7 +267,10 @@ async function listMatches({ includeAll = false } = {}) {
     ? {}
     : { status: { $in: ['upcoming', 'live'] } };
 
-  const matches = await Match.find(filter).sort({ matchDate: 1 }).lean();
+  const matches = await Match.find(filter)
+    .populate('venue', 'name location')
+    .sort({ matchDate: 1 })
+    .lean();
 
   const formattedMatches = await Promise.all(
     matches.map(async (match) => {
@@ -147,7 +286,9 @@ async function getMatchById(matchId) {
   if (!matchId || !mongoose.Types.ObjectId.isValid(matchId)) {
     throw createHttpError('Invalid match ID', 400);
   }
-  const match = await Match.findById(matchId).populate('createdBy', 'name email');
+  const match = await Match.findById(matchId)
+    .populate('createdBy', 'name email')
+    .populate('venue', 'name location');
 
   if (!match) {
     throw createHttpError('Match not found', 404);
@@ -157,7 +298,7 @@ async function getMatchById(matchId) {
   return formatMatch(match, seatStats);
 }
 
-async function getMatchSeats(matchId, { category } = {}) {
+async function getMatchSeats(matchId, { category, sectionId } = {}) {
   const match = await Match.findById(matchId);
 
   if (!match) {
@@ -165,27 +306,39 @@ async function getMatchSeats(matchId, { category } = {}) {
   }
 
   const filter = { match: matchId };
-  if (category) {
-    filter.category = category;
-  }
+  if (category) filter.category = category;
+  if (sectionId) filter.sectionId = sectionId;
 
   const seats = await Seat.find(filter).sort({ row: 1, number: 1 }).lean();
 
+  const sectionGateMap = {};
+  if (match.stadiumSections) {
+    for (const sec of match.stadiumSections) {
+      sectionGateMap[sec.sectionId] = inferGate(sec);
+    }
+  }
+
   const now = new Date();
   return seats.map((seat) => {
-    // Treat expired locks as available
     let status = seat.status;
     if (status === 'locked' && seat.lockedUntil && seat.lockedUntil < now) {
       status = 'available';
     }
 
+    const pricingObj = match.pricing instanceof Map
+      ? Object.fromEntries(match.pricing)
+      : match.pricing || {};
+
+    const gate = seat.gate || sectionGateMap[seat.sectionId] || '';
     return {
       id: seat._id,
+      sectionId: seat.sectionId,
+      gate,
       seatLabel: seat.seatLabel,
       row: seat.row,
       number: seat.number,
       category: seat.category,
-      price: seat.price,
+      price: pricingObj[seat.category] ?? seat.price,
       status,
     };
   });
@@ -198,17 +351,116 @@ async function updateMatch(matchId, updates) {
     throw createHttpError('Match not found', 404);
   }
 
-  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status'];
+  const allowedFields = ['title', 'teamA', 'teamB', 'venue', 'matchDate', 'description', 'status', 'imageUrl', 'teamALogo', 'teamBLogo', 'match_type', 'match_stage', 'cricket_format', 'star_power_level'];
   allowedFields.forEach((field) => {
     if (updates[field] !== undefined) {
       match[field] = updates[field];
     }
   });
 
+  if (updates.pricing) {
+    const parsedPricing = parsePricing(updates.pricing);
+    match.pricing = parsedPricing;
+
+    const bulkOps = [];
+    for (const [category, price] of Object.entries(parsedPricing)) {
+      const finalPrice = Number(price);
+      if (Number.isNaN(finalPrice) || finalPrice < 0) continue;
+      bulkOps.push({
+        updateMany: {
+          filter: { match: matchId, category, status: 'available' },
+          update: { price: finalPrice },
+        },
+      });
+    }
+
+    if (bulkOps.length > 0) {
+      await Seat.bulkWrite(bulkOps);
+    }
+  }
+
+  let seatsRegenerated = false;
+
+  if (updates.stadiumSections) {
+    const bookedOrLocked = await Seat.countDocuments({
+      match: matchId,
+      status: { $in: ['booked', 'locked'] },
+    });
+
+    if (bookedOrLocked > 0) {
+      throw createHttpError(
+        `Cannot modify stadium layout: ${bookedOrLocked} seat(s) are booked or locked.`,
+        400
+      );
+    }
+
+    match.stadiumSections = updates.stadiumSections;
+    match.totalSeats = updates.stadiumSections.reduce((sum, s) => sum + (s.totalSeats || 0), 0);
+
+    await Seat.deleteMany({ match: matchId });
+    const seatDocuments = buildSeatDocuments(match);
+    if (seatDocuments.length > 0) {
+      const seen = new Set();
+      const unique = seatDocuments.filter((s) => {
+        if (seen.has(s.seatLabel)) return false;
+        seen.add(s.seatLabel);
+        return true;
+      });
+      await Seat.insertMany(unique, { ordered: false }).catch(() => {});
+    }
+    seatsRegenerated = true;
+  } else if (updates.seatLayout) {
+    const bookedOrLocked = await Seat.countDocuments({
+      match: matchId,
+      status: { $in: ['booked', 'locked'] },
+    });
+
+    if (bookedOrLocked > 0) {
+      throw createHttpError(
+        `Cannot modify seat layout: ${bookedOrLocked} seat(s) are booked or locked.`,
+        400
+      );
+    }
+
+    const layout = updates.seatLayout;
+    const rows = Number(layout.rows);
+    const seatsPerRow = Number(layout.seatsPerRow);
+    const vipRows = Number(layout.vipRows ?? 0);
+    const premiumRows = Number(layout.premiumRows ?? 0);
+
+    if (!rows || rows < 1 || rows > 30) {
+      throw createHttpError('seatLayout.rows must be between 1 and 30', 400);
+    }
+    if (!seatsPerRow || seatsPerRow < 1 || seatsPerRow > 50) {
+      throw createHttpError('seatLayout.seatsPerRow must be between 1 and 50', 400);
+    }
+
+    match.seatLayout = { rows, seatsPerRow, vipRows, premiumRows };
+    match.totalSeats = rows * seatsPerRow;
+
+    await Seat.deleteMany({ match: matchId });
+    const seatDocuments = buildSeatDocuments(match);
+    if (seatDocuments.length > 0) {
+      const seen = new Set();
+      const unique = seatDocuments.filter((s) => {
+        if (seen.has(s.seatLabel)) return false;
+        seen.add(s.seatLabel);
+        return true;
+      });
+      await Seat.insertMany(unique, { ordered: false }).catch(() => {});
+    }
+    seatsRegenerated = true;
+  }
+
   await match.save();
 
-  const seatStats = await getSeatStats(match._id);
-  return formatMatch(match, seatStats);
+  let seatStats = {};
+  try {
+    seatStats = await getSeatStats(match._id);
+  } catch (statsErr) {
+    console.error('[updateMatch] getSeatStats failed (match already saved):', statsErr.message);
+  }
+  return { ...formatMatch(match, seatStats), seatsRegenerated };
 }
 
 async function cancelMatch(matchId) {
@@ -221,27 +473,62 @@ async function cancelMatch(matchId) {
   match.status = 'cancelled';
   await match.save();
 
-  // Cascade: cancel all confirmed/pending bookings for this match
-  const bookingsResult = await Booking.updateMany(
-    { match: matchId, status: { $in: ['confirmed', 'pending'] } },
+  const Ticket = require('../models/Ticket');
+
+  const bookingsToCancel = await Booking.find(
+    { match: matchId, status: { $in: ['confirmed', 'pending'] } }
+  );
+
+  const refunds = [];
+  for (const booking of bookingsToCancel) {
+    try {
+      await createNotification(booking.user, {
+        title: 'Match Cancelled',
+        message: `The match "${match.title}" has been cancelled. Your refund of Rs.${booking.totalAmount} is being processed.`,
+        type: 'match_cancelled',
+        data: { matchId: match._id, bookingId: booking._id, amount: booking.totalAmount },
+      });
+    } catch (err) {
+      console.error(`[CANCEL] Failed to send match_cancelled notification for booking ${booking._id}:`, err.message);
+    }
+    try {
+      const refund = await processRefundForBooking(booking, 'match_cancelled');
+      refunds.push(refund);
+    } catch (err) {
+      console.error(`[CANCEL] Failed to process refund for booking ${booking._id}:`, err.message);
+    }
+  }
+
+  await Booking.updateMany(
+    { _id: { $in: bookingsToCancel.map(b => b._id) } },
     { status: 'cancelled' }
   );
 
-  // Cascade: release all locked/booked seats back to available
+  const ticketsResult = await Ticket.updateMany(
+    { match: matchId, status: 'active' },
+    { status: 'cancelled' }
+  );
+
   const seatsResult = await Seat.updateMany(
     { match: matchId, status: { $in: ['locked', 'booked'] } },
     { status: 'available', lockedBy: null, lockedUntil: null }
   );
 
   const seatStats = await getSeatStats(match._id);
+  const refundTotal = refunds.reduce((sum, r) => sum + r.amount, 0);
+  console.log(`[MATCH] "${match.title}" cancelled — ${refunds.length} refunds totalling Rs.${refundTotal}`);
   return {
     ...formatMatch(match, seatStats),
-    cancelledBookings: bookingsResult.modifiedCount,
+    cancelledBookings: bookingsToCancel.length,
+    refundsProcessed: refunds.length,
+    refundAmount: refundTotal,
+    invalidatedTickets: ticketsResult.modifiedCount,
     releasedSeats: seatsResult.modifiedCount,
   };
 }
 
 module.exports = {
+  buildSeatDocuments,
   createMatch,
   listMatches,
   getMatchById,
