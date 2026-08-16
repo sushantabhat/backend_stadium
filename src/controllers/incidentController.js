@@ -32,7 +32,7 @@ exports.reportIncident = async (req, res) => {
 // GET /api/incidents
 exports.getIncidents = async (req, res) => {
   try {
-    const incidents = await Incident.find().populate('reportedBy', 'name email').sort({ createdAt: -1 });
+    const incidents = await Incident.find().populate('reportedBy', 'name email').populate('resolvedBy', 'name email').sort({ createdAt: -1 });
     res.status(200).json({ success: true, incidents });
   } catch (error) {
     console.error('[Incident Controller] Error fetching incidents:', error);
@@ -43,7 +43,7 @@ exports.getIncidents = async (req, res) => {
 // GET /api/incidents/:id
 exports.getIncidentById = async (req, res) => {
   try {
-    const incident = await Incident.findById(req.params.id).populate('reportedBy', 'name email');
+    const incident = await Incident.findById(req.params.id).populate('reportedBy', 'name email').populate('resolvedBy', 'name email');
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Incident not found' });
     }

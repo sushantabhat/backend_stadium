@@ -74,6 +74,42 @@ async function findTicketByCode(code) {
 }
 
 /**
+ * Look up a ticket without verifying or marking it as used.
+ * Used by supervisors for incident investigation.
+ */
+async function lookupTicket(ticketCode) {
+  const trimmedCode = ticketCode?.trim();
+  if (!trimmedCode) {
+    throw createHttpError('Ticket code is required', 400);
+  }
+
+  const existingTicket = await findTicketByCode(trimmedCode);
+  if (!existingTicket) {
+    throw createHttpError('Ticket not found. Invalid QR code.', 404);
+  }
+
+  // Populate necessary fields
+  await existingTicket.populate('user', 'name email');
+  await existingTicket.populate('match');
+  await existingTicket.populate('seat', 'seatLabel category price gate');
+
+  return {
+    ticket: {
+      ticketCode: existingTicket.ticketCode,
+      userName: existingTicket.user?.name || 'Unknown Fan',
+      seatLabel: existingTicket.seat?.seatLabel || 'N/A',
+      category: existingTicket.seat?.category || 'general',
+      matchTitle: existingTicket.match?.title || 'Unknown Match',
+      status: existingTicket.status,
+      usedAt: existingTicket.usedAt,
+      user: existingTicket.user,
+      seat: existingTicket.seat,
+      match: existingTicket.match,
+    }
+  };
+}
+
+/**
  * Verify a ticket for stadium entry (Staff operation).
  *
  * Rule-based validation (deterministic):
@@ -180,6 +216,29 @@ async function verifyTicket(staffId, ticketCode) {
     console.error(`[TicketVerify] LOG FAILED code="${trimmedCode}" error=${logErr.message}`);
   }
 
+  // Step 3.5: Auto-resolve any open incidents for this ticket
+  try {
+    const Incident = require('../models/Incident');
+    const result = await Incident.updateMany(
+      { ticketCode: ticket.ticketCode, status: { $ne: 'Resolved' } },
+      {
+        $set: { status: 'Resolved', resolvedBy: staffId },
+        // Append note if it exists, otherwise set it
+        // We'll just overwrite or you could use aggregation pipeline. We'll just set it.
+      }
+    );
+    // Since we can't easily append notes with updateMany without pipelined updates, we will just iterate if there are any
+    if (result.modifiedCount > 0) {
+      const incidents = await Incident.find({ ticketCode: ticket.ticketCode, status: 'Resolved', resolvedBy: staffId });
+      for (const inc of incidents) {
+        inc.notes = inc.notes ? `${inc.notes}\n\nResolved via manual supervisor override (Entry Granted).` : 'Resolved via manual supervisor override (Entry Granted).';
+        await inc.save();
+      }
+    }
+  } catch (incidentErr) {
+    console.error(`[TicketVerify] Incident auto-resolve failed:`, incidentErr.message);
+  }
+
   // Step 4: Broadcast real-time attendance update
   const matchId = ticket.match?._id || ticket.match;
   if (matchId) {
@@ -202,6 +261,7 @@ async function verifyTicket(staffId, ticketCode) {
   }
 
   return {
+    message: 'Ticket verified. Welcome to the stadium!',
     ticket: {
       ticketCode: ticket.ticketCode,
       userName: ticket.user?.name || 'Unknown Fan',
@@ -215,6 +275,55 @@ async function verifyTicket(staffId, ticketCode) {
       match: ticket.match,
     },
     log,
+  };
+}
+
+/**
+ * Deny entry and cancel the ticket (Supervisor override).
+ */
+async function denyTicket(staffId, ticketCode) {
+  const trimmedCode = ticketCode?.trim();
+  if (!trimmedCode) {
+    throw createHttpError('Ticket code is required', 400);
+  }
+
+  const existingTicket = await findTicketByCode(trimmedCode);
+  if (!existingTicket) {
+    throw createHttpError('Ticket not found. Invalid QR code.', 404);
+  }
+
+  // Atomically mark as cancelled
+  const ticket = await Ticket.findOneAndUpdate(
+    { _id: existingTicket._id, status: { $ne: 'cancelled' } },
+    { $set: { status: 'cancelled' } },
+    { new: true }
+  );
+
+  if (!ticket) {
+    throw createHttpError('Ticket is already cancelled.', 409);
+  }
+
+  // Auto-resolve any open incidents for this ticket
+  try {
+    const Incident = require('../models/Incident');
+    const result = await Incident.updateMany(
+      { ticketCode: ticket.ticketCode, status: { $ne: 'Resolved' } },
+      { $set: { status: 'Resolved', resolvedBy: staffId } }
+    );
+    if (result.modifiedCount > 0) {
+      const incidents = await Incident.find({ ticketCode: ticket.ticketCode, status: 'Resolved', resolvedBy: staffId });
+      for (const inc of incidents) {
+        inc.notes = inc.notes ? `${inc.notes}\n\nResolved via manual supervisor override (Entry Denied - Ticket Cancelled).` : 'Resolved via manual supervisor override (Entry Denied - Ticket Cancelled).';
+        await inc.save();
+      }
+    }
+  } catch (incidentErr) {
+    console.error(`[TicketVerify] Incident auto-resolve failed:`, incidentErr.message);
+  }
+
+  return {
+    message: 'Ticket has been permanently cancelled and entry denied.',
+    ticket,
   };
 }
 
@@ -233,5 +342,7 @@ async function getStaffScanHistory(staffId) {
 module.exports = {
   getMyTickets,
   verifyTicket,
+  denyTicket,
+  lookupTicket,
   getStaffScanHistory,
 };

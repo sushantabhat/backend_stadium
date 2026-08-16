@@ -24,6 +24,11 @@ const incidentSchema = new mongoose.Schema({
     ref: 'User',
     required: false // Optional to allow anonymous or system reports if needed
   },
+  resolvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false
+  },
   status: {
     type: String,
     enum: ['Open', 'In Progress', 'Resolved'],

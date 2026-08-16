@@ -264,10 +264,9 @@ async function confirmBooking(userId, matchId, seatIds) {
     seat.lockedUntil = null;
     await seat.save();
 
-    // Generate unique ticket verification code using crypto
-    const randomSuffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const matchPart = matchId.toString().slice(-6);
-    const ticketCode = `TKT-${matchPart}-${seat.seatLabel}-${randomSuffix}`;
+    // Generate concise, human-readable ticket verification code (e.g., TKT-A1B2C3)
+    const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const ticketCode = `TKT-${randomHex}`;
 
     const ticket = await Ticket.create({
       booking: booking._id,

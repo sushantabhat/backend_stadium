@@ -25,6 +25,37 @@ async function verifyTicket(req, res, next) {
   }
 }
 
+async function denyTicket(req, res, next) {
+  try {
+    const { ticketCode } = req.body;
+    const staffId = req.user.id;
+
+    const result = await ticketService.denyTicket(staffId, ticketCode);
+
+    res.status(200).json({
+      message: result.message,
+      ticket: result.ticket,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function lookupTicket(req, res, next) {
+  try {
+    const { ticketCode } = req.params;
+    
+    const result = await ticketService.lookupTicket(ticketCode);
+
+    res.status(200).json({
+      message: 'Ticket details retrieved successfully.',
+      ticket: result.ticket,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getStaffScanHistory(req, res, next) {
   try {
     const history = await ticketService.getStaffScanHistory(req.user.id);
@@ -37,5 +68,7 @@ async function getStaffScanHistory(req, res, next) {
 module.exports = {
   getMyTickets,
   verifyTicket,
+  denyTicket,
+  lookupTicket,
   getStaffScanHistory,
 };
