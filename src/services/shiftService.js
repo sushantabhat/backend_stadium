@@ -15,11 +15,13 @@ async function getShifts(filter) {
     end.setDate(end.getDate() + 1);
     q.date = { $gte: d, $lt: end };
   }
-  return StaffShift.find(q)
+  const shifts = await StaffShift.find(q)
     .populate('staff', 'name email role')
     .populate('match', 'title teamA teamB matchDate status venue')
     .sort({ date: -1, createdAt: -1 })
     .limit(100);
+    
+  return shifts.filter(s => s.match != null);
 }
 
 async function getShiftById(id) {
@@ -79,16 +81,15 @@ async function getMyActiveShift(staffId) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const shift = await StaffShift.findOne({
+  const shifts = await StaffShift.find({
     staff: staffId,
     date: { $gte: start, $lt: end },
   })
     .populate('staff', 'name email role')
     .populate('match', 'title teamA teamB matchDate status venue')
-    .sort({ createdAt: -1 })
-    .limit(1);
+    .sort({ createdAt: -1 });
 
-  return shift;
+  return shifts.find(s => s.match != null) || null;
 }
 
 async function getGateStats(matchId) {
