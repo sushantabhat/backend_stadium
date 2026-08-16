@@ -1,19 +1,26 @@
 const Incident = require('../models/Incident');
+const Ticket = require('../models/Ticket');
 
 // POST /api/incidents
 exports.reportIncident = async (req, res) => {
   try {
     const { type, severity, ticketCode, notes } = req.body;
-    
-    // In a real app with auth middleware, you'd extract req.user.id
-    // const reportedBy = req.user ? req.user.id : null;
-    
+
+    // Look up the ticket by code to link it to the incident
+    let ticketId = null;
+    if (ticketCode) {
+      const ticket = await Ticket.findOne({ ticketCode });
+      if (ticket) {
+        ticketId = ticket._id;
+      }
+    }
+
     const newIncident = new Incident({
       type,
       severity,
+      ticket: ticketId,
       ticketCode,
       notes,
-      // reportedBy
     });
 
     await newIncident.save();
@@ -32,7 +39,17 @@ exports.reportIncident = async (req, res) => {
 // GET /api/incidents
 exports.getIncidents = async (req, res) => {
   try {
-    const incidents = await Incident.find().populate('reportedBy', 'name email').sort({ createdAt: -1 });
+    const incidents = await Incident.find()
+      .populate('reportedBy', 'name email')
+      .populate({
+        path: 'ticket',
+        populate: [
+          { path: 'user', select: 'name email phone' },
+          { path: 'seat', select: 'seatLabel category zone' },
+          { path: 'match', select: 'title date venue' },
+        ],
+      })
+      .sort({ createdAt: -1 });
     res.status(200).json({ success: true, incidents });
   } catch (error) {
     console.error('[Incident Controller] Error fetching incidents:', error);
@@ -43,7 +60,16 @@ exports.getIncidents = async (req, res) => {
 // GET /api/incidents/:id
 exports.getIncidentById = async (req, res) => {
   try {
-    const incident = await Incident.findById(req.params.id).populate('reportedBy', 'name email');
+    const incident = await Incident.findById(req.params.id)
+      .populate('reportedBy', 'name email')
+      .populate({
+        path: 'ticket',
+        populate: [
+          { path: 'user', select: 'name email phone' },
+          { path: 'seat', select: 'seatLabel category zone' },
+          { path: 'match', select: 'title date venue' },
+        ],
+      });
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Incident not found' });
     }
@@ -59,14 +85,14 @@ exports.updateIncidentStatus = async (req, res) => {
   try {
     const { status, notes } = req.body;
     const incident = await Incident.findById(req.params.id);
-    
+
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Incident not found' });
     }
-    
+
     if (status) incident.status = status;
     if (notes) incident.notes = incident.notes ? `${incident.notes}\n\nUpdate: ${notes}` : notes;
-    
+
     await incident.save();
     res.status(200).json({ success: true, incident });
   } catch (error) {

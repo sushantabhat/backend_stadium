@@ -11,6 +11,11 @@ const incidentSchema = new mongoose.Schema({
     required: true,
     enum: ['low', 'medium', 'high', 'critical']
   },
+  ticket: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ticket',
+    default: null
+  },
   ticketCode: {
     type: String,
     default: null

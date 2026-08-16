@@ -3,6 +3,14 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+const dns = require('dns');
+
+// Fix for querySrv ECONNREFUSED error on local networks/ISPs that block or fail DNS SRV record queries
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (dnsErr) {
+  // Ignore if custom DNS cannot be set
+}
 
 const envResult = require('dotenv').config({
   path: path.join(__dirname, '.env'),
