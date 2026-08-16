@@ -44,6 +44,11 @@ const userSchema = new mongoose.Schema(
           };
 
           for (const common of commonDomains) {
+            // Check for concatenated typos like sjdjdjgmail.com
+            if (domain.endsWith(common) && domain !== common && !domain.endsWith('.' + common)) {
+              return false;
+            }
+
             const dist = getEditDistance(domain, common);
             // If it's a slight typo (distance 1 or 2) but not the exact domain, reject it
             // We allow distance 0 (exact match) and distance > 2 (completely different domain)
