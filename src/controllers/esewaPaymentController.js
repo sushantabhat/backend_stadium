@@ -226,15 +226,15 @@ function getEsewaForm(req, res) {
           <div class="input-icon">
             <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </div>
-          <input type="text" id="mobile" class="input-field" placeholder="Mobile Number" value="9711111113" oninput="checkLogin()">
+          <input type="text" id="mobile" class="input-field" placeholder="Mobile Number" oninput="checkLogin()">
         </div>
         
         <div class="input-group">
           <div class="input-icon">
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
           </div>
-          <input type="password" id="mpin" class="input-field" placeholder="Password/MPIN" value="1111" oninput="checkLogin()">
-          <div class="input-icon-right">
+          <input type="password" id="mpin" class="input-field" placeholder="Password/MPIN" oninput="checkLogin()">
+          <div class="input-icon-right" onclick="togglePassword()" style="cursor: pointer;">
             <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
           </div>
         </div>
@@ -295,7 +295,7 @@ function getEsewaForm(req, res) {
         <div class="user-details">
           <div class="user-title">User Details</div>
           <div class="user-row">
-            <div class="user-phone-green">9711111113</div>
+            <div class="user-phone-green">9711111111</div>
             <div class="user-edit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A4B0BE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div>
           </div>
           <div class="user-name">ESewa Ltd</div>
@@ -335,7 +335,7 @@ function getEsewaForm(req, res) {
       <div style="padding: 24px;">
         <div style="margin-bottom: 24px;">
           <div style="font-size: 11px; color: #A4B0BE; font-weight: 600; letter-spacing: 1px; margin-bottom: 4px;">ESEWA ID</div>
-          <div style="font-size: 15px; font-weight: 700; color: #434A54;">9711111113</div>
+          <div style="font-size: 15px; font-weight: 700; color: #434A54;">9711111111</div>
         </div>
         
         <div style="margin-bottom: 24px;">
@@ -345,7 +345,7 @@ function getEsewaForm(req, res) {
         
         <div style="margin-bottom: 24px;">
           <div style="font-size: 11px; color: #A4B0BE; font-weight: 600; letter-spacing: 1px; margin-bottom: 4px;">CONTACT NUMBER</div>
-          <div style="font-size: 15px; font-weight: 700; color: #434A54;">9711111113</div>
+          <div style="font-size: 15px; font-weight: 700; color: #434A54;">9711111111</div>
         </div>
         
         <div style="background: #F9FAFB; border-radius: 6px; padding: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -368,6 +368,15 @@ function getEsewaForm(req, res) {
   <script>
     const successUrl = '${successUrl}';
     const failureUrl = '${failureUrl}';
+    
+    function togglePassword() {
+      const input = document.getElementById('mpin');
+      if (input.type === 'password') {
+        input.type = 'text';
+      } else {
+        input.type = 'password';
+      }
+    }
     
     function toggleRc() {
       const el = document.getElementById('rc-check');
@@ -397,9 +406,15 @@ function getEsewaForm(req, res) {
     function doLogin() {
       const btn = document.getElementById('loginBtn');
       if (btn.classList.contains('active')) {
-        document.getElementById('step1').style.display = 'none';
-        document.getElementById('step2').style.display = 'block';
-        startTimer();
+        const m = document.getElementById('mobile').value;
+        const p = document.getElementById('mpin').value;
+        if (m === '9711111111' && p === '1122') {
+          document.getElementById('step1').style.display = 'none';
+          document.getElementById('step2').style.display = 'block';
+          startTimer();
+        } else {
+          alert('Invalid eSewa ID or Password/MPIN');
+        }
       }
     }
     
